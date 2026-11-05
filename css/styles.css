@@ -371,6 +371,31 @@ a { color: inherit; }
   cursor: pointer;
 }
 .password-toggle:hover { color: var(--text); border-color: var(--line-strong); }
+.mic-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 15px;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(9, 15, 28, 0.55);
+}
+.mic-check-text { display: flex; flex: 1 1 150px; flex-direction: column; gap: 2px; min-width: 0; }
+.mic-check-title {
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+.mic-status { color: var(--faint); font-size: 9px; line-height: 1.45; }
+.mic-check[data-state="ready"] .mic-status { color: var(--green); }
+.mic-check[data-state="requesting"] .mic-status { color: var(--blue); }
+.mic-check[data-state="error"] .mic-status { color: #ffb4b4; }
+.mic-btn { flex: 0 0 auto; margin-left: auto; min-height: 32px; font-size: 8.5px; }
+.mic-hint { margin: 7px 0 0; color: #4b5a72; font-size: 8px; line-height: 1.5; }
 .form-error {
   margin: 14px 0 0;
   padding: 10px 12px;
@@ -1237,35 +1262,7 @@ a { color: inherit; }
   }
 }
 
-/* --------------------------------------------------------- telephony mode */
-.mode-switch {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  margin: 0 0 20px;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(7, 11, 20, 0.45);
-}
-.mode-option {
-  border: 0;
-  border-radius: 9px;
-  padding: 9px 10px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
-}
-.mode-option:hover { color: var(--text); }
-.mode-option.is-active {
-  background: var(--panel-3);
-  color: var(--text);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 20px -14px rgba(0, 0, 0, 0.9);
-}
+/* --------------------------------------------------------- telephony badge */
 .telephony-badge {
   display: inline-flex;
   align-items: center;
@@ -1297,4 +1294,323 @@ a { color: inherit; }
 
 @media (max-width: 520px) {
   .telephony-badge { display: none; }
+}
+
+/* =========================================================
+   Light theme — follows the OS/browser preference.
+   The dark tokens above stay the default; this block only
+   shifts colors so the same layout works on light surfaces.
+   ========================================================= */
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #f4f6fb;
+    --bg-soft: #eef2f9;
+    --panel: #ffffff;
+    --panel-2: #f8fafc;
+    --panel-3: #eef3fa;
+    --line: rgba(15, 23, 42, 0.11);
+    --line-strong: rgba(15, 23, 42, 0.22);
+    --text: #0f172a;
+    --muted: #475569;
+    --faint: #64748b;
+    --shadow: 0 24px 60px -36px rgba(15, 23, 42, 0.28);
+  }
+
+  html { scrollbar-color: #b9c5d6 #eef2f9; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: #eef2f9; }
+  ::-webkit-scrollbar-thumb { background: #c3ccda; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #aab7ca; }
+
+  ::selection { background: rgba(91, 140, 255, 0.22); color: #0f172a; }
+  :focus-visible { outline-color: #2563eb; }
+
+  .ambient-glow { opacity: 0.5; }
+  .ambient-glow-a {
+    background: radial-gradient(circle, rgba(91, 140, 255, 0.16), transparent 68%);
+  }
+  .ambient-glow-b {
+    background: radial-gradient(circle, rgba(34, 211, 238, 0.1), transparent 68%);
+  }
+  .ambient-grid {
+    background-image:
+      linear-gradient(rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(15, 23, 42, 0.045) 1px, transparent 1px);
+  }
+
+  .brand-mark { color: #07172c; }
+  .brand-word span { color: #0e7490; }
+  .eyebrow { color: #0e7490; }
+  .login-brand::before {
+    background: radial-gradient(ellipse, rgba(91, 140, 255, 0.12), transparent 68%);
+  }
+  .login-hero h1 span {
+    background: linear-gradient(96deg, #4a7bd8 0%, #2f63d8 42%, #0e7490 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .feature-list { color: #334155; }
+  .feature-icon {
+    border-color: rgba(59, 111, 224, 0.28);
+    background: rgba(91, 140, 255, 0.1);
+    color: #2f5fd0;
+  }
+
+  .preview-shell {
+    background: linear-gradient(165deg, #ffffff, #f1f5fb);
+    box-shadow: 0 20px 50px -34px rgba(15, 23, 42, 0.3), inset 0 1px 0 #ffffff;
+  }
+  .preview-avatar {
+    background: linear-gradient(140deg, #dbeafe, #c7d9f6);
+    border-color: rgba(15, 23, 42, 0.12);
+    color: #1e3a8a;
+  }
+  .preview-badge {
+    border-color: rgba(5, 150, 105, 0.28);
+    background: rgba(16, 185, 129, 0.1);
+    color: #047857;
+  }
+  .preview-call {
+    background:
+      radial-gradient(circle at 12% 0%, rgba(96, 165, 250, 0.16), transparent 58%),
+      #f8fafc;
+    border-color: rgba(37, 99, 235, 0.2);
+  }
+  .preview-label { color: #1d4ed8; }
+  .preview-actions i { background: rgba(15, 23, 42, 0.15); }
+  .preview-actions i.is-danger { background: rgba(220, 38, 38, 0.4); }
+  .preview-row { color: #334155; }
+  .preview-pill.is-ok { color: #047857; background: rgba(16, 185, 129, 0.12); }
+  .preview-pill.is-blue { color: #1d4ed8; background: rgba(59, 130, 246, 0.12); }
+
+  .login-card {
+    background: linear-gradient(170deg, #ffffff, #f8fafc);
+    box-shadow: 0 24px 60px -36px rgba(15, 23, 42, 0.28), inset 0 1px 0 #ffffff;
+  }
+  .login-card::before {
+    background: linear-gradient(90deg, transparent, rgba(91, 140, 255, 0.6), transparent);
+  }
+  .field input {
+    background: #ffffff;
+    border-color: var(--line);
+  }
+  .field input::placeholder { color: #6b7a8f; }
+  .field input:hover { border-color: var(--line-strong); }
+  .field input:focus {
+    background: #ffffff;
+    border-color: rgba(59, 111, 224, 0.7);
+    box-shadow: 0 0 0 3px rgba(59, 111, 224, 0.14);
+  }
+  .field input[aria-invalid="true"] { border-color: rgba(220, 38, 38, 0.55); }
+  .password-toggle { background: #eef3fa; color: #475569; }
+  .password-toggle:hover { background: #e7edf7; color: #0f172a; }
+
+  .mic-check { background: #f8fafc; }
+  .mic-status { color: #64748b; }
+  .mic-check[data-state="ready"] .mic-status { color: #047857; }
+  .mic-check[data-state="requesting"] .mic-status { color: #1d4ed8; }
+  .mic-check[data-state="error"] .mic-status { color: #b42318; }
+  .mic-hint { color: #64748b; }
+
+  .form-error {
+    border-color: rgba(220, 38, 38, 0.28);
+    background: rgba(220, 38, 38, 0.07);
+    color: #b42318;
+  }
+  .login-version { color: #64748b; }
+  .login-version span { color: #475569; }
+
+  .topbar { background: rgba(244, 246, 251, 0.86); }
+  .avatar {
+    border-color: rgba(15, 23, 42, 0.14);
+    background: linear-gradient(145deg, #dbe7fa, #c4d6f0);
+    color: #1e3a8a;
+  }
+  .state-timer { color: #1e293b; }
+
+  .status-badge[data-status="AVAILABLE"] {
+    color: #047857;
+    border-color: rgba(5, 150, 105, 0.28);
+    background: rgba(16, 185, 129, 0.1);
+  }
+  .status-badge[data-status="ON_CALL"] {
+    color: #1d4ed8;
+    border-color: rgba(37, 99, 235, 0.3);
+    background: rgba(59, 130, 246, 0.1);
+  }
+  .status-badge[data-status="WRAP_UP"] {
+    color: #b45309;
+    border-color: rgba(180, 83, 9, 0.28);
+    background: rgba(251, 191, 36, 0.14);
+  }
+  .status-badge[data-status="AUX"] {
+    color: #c2410c;
+    border-color: rgba(194, 65, 12, 0.28);
+    background: rgba(251, 146, 60, 0.12);
+  }
+
+  .aux-picker { background: #ffffff; }
+  .aux-picker select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%23475569' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+  .aux-picker option { background: #ffffff; color: #0f172a; }
+  .btn-quiet { background: #ffffff; color: #475569; }
+  .btn-quiet:hover:not(:disabled) { background: #eef3fa; color: #0f172a; }
+
+  .panel {
+    background: linear-gradient(172deg, #ffffff, #f7f9fd);
+    box-shadow: 0 24px 60px -40px rgba(15, 23, 42, 0.26), inset 0 1px 0 #ffffff;
+  }
+  .count-badge { background: rgba(91, 140, 255, 0.11); color: #2f5fd0; }
+  .dialer-state[data-mode="ready"] {
+    color: #047857;
+    border-color: rgba(5, 150, 105, 0.26);
+    background: rgba(16, 185, 129, 0.09);
+  }
+  .dialer-state[data-mode="paused"] {
+    color: #c2410c;
+    border-color: rgba(194, 65, 12, 0.26);
+    background: rgba(251, 146, 60, 0.1);
+  }
+  .dialer-state[data-mode="call"] {
+    color: #1d4ed8;
+    border-color: rgba(37, 99, 235, 0.26);
+    background: rgba(59, 130, 246, 0.09);
+  }
+  .dialer-state[data-mode="wrap"] {
+    color: #b45309;
+    border-color: rgba(180, 83, 9, 0.26);
+    background: rgba(251, 191, 36, 0.12);
+  }
+
+  .phone-number { background: #ffffff; }
+  .phone-number::placeholder { color: #6b7a8f; }
+  .phone-number:focus {
+    border-color: rgba(59, 111, 224, 0.65);
+    box-shadow: 0 0 0 3px rgba(59, 111, 224, 0.12);
+  }
+
+  .key {
+    background: linear-gradient(180deg, #ffffff, #f1f5fb);
+    box-shadow: inset 0 1px 0 #ffffff, 0 3px 0 rgba(15, 23, 42, 0.08);
+  }
+  .key small { color: #64748b; }
+  .key:hover:not(:disabled) {
+    background: linear-gradient(180deg, #ffffff, #e9eff8);
+    border-color: rgba(59, 111, 224, 0.4);
+  }
+  .key:active:not(:disabled) {
+    box-shadow: inset 0 1px 0 #ffffff, 0 1px 0 rgba(15, 23, 42, 0.06);
+  }
+  .key.is-pressed:not(:disabled) {
+    background: linear-gradient(180deg, #eef4ff, #e1eafa);
+    border-color: rgba(59, 111, 224, 0.55);
+    box-shadow: inset 0 1px 0 #ffffff, 0 1px 0 rgba(15, 23, 42, 0.06);
+  }
+  .tool-btn { background: #f8fafc; color: #475569; }
+  .tool-btn:hover:not(:disabled) { background: #eef3fa; color: #0f172a; }
+  .tool-btn.is-pressed:not(:disabled) {
+    background: #e6efff;
+    border-color: rgba(59, 111, 224, 0.4);
+    color: #0f172a;
+  }
+  .btn-call:disabled {
+    background: linear-gradient(180deg, #e2e8f0, #d7dfea);
+    color: #6b7a8f;
+  }
+  .dialer-fineprint { color: #64748b; }
+  .keyboard-hint { color: #64748b; }
+  .keyboard-hint kbd {
+    border-color: rgba(15, 23, 42, 0.14);
+    background: #f1f5fb;
+    color: #475569;
+  }
+
+  .call-panel {
+    border-color: rgba(37, 99, 235, 0.24);
+    background:
+      radial-gradient(circle at 8% 0%, rgba(96, 165, 250, 0.16), transparent 52%),
+      linear-gradient(170deg, #f8fbff, #eef4fb);
+  }
+  .call-state { color: #1d4ed8; }
+  .call-timer { color: #334155; }
+  .call-dtmf {
+    border-color: rgba(8, 145, 178, 0.3);
+    background: rgba(8, 145, 178, 0.1);
+    color: #0e7490;
+  }
+  .call-control { background: #f8fafc; color: #475569; }
+  .call-control:hover:not(:disabled) { background: #eef3fa; color: #0f172a; }
+  .call-control[aria-pressed="true"] {
+    color: #b45309;
+    border-color: rgba(180, 83, 9, 0.32);
+    background: rgba(251, 191, 36, 0.16);
+  }
+  .call-hangup {
+    border-color: rgba(220, 38, 38, 0.32);
+    background: rgba(220, 38, 38, 0.1);
+    color: #b42318;
+  }
+  .call-hangup:hover:not(:disabled) {
+    background: rgba(220, 38, 38, 0.16);
+    border-color: rgba(220, 38, 38, 0.5);
+    color: #991b1b;
+  }
+
+  .history-table th { background: #f8fafc; color: #64748b; }
+  .history-table td { border-bottom-color: rgba(15, 23, 42, 0.07); }
+  .history-table tbody tr:hover td { background: rgba(91, 140, 255, 0.06); }
+  .history-number { color: #1e293b; }
+  .history-number:hover { color: #0e7490; border-bottom-color: rgba(8, 145, 178, 0.4); }
+  .history-time { color: #334155; }
+  .history-duration { color: #334155; }
+  .status-pill.is-completed {
+    color: #047857;
+    border-color: rgba(5, 150, 105, 0.25);
+    background: rgba(16, 185, 129, 0.1);
+  }
+  .status-pill.is-handled {
+    color: #1d4ed8;
+    border-color: rgba(37, 99, 235, 0.25);
+    background: rgba(59, 130, 246, 0.1);
+  }
+  .status-pill.is-no-answer {
+    color: #b45309;
+    border-color: rgba(180, 83, 9, 0.25);
+    background: rgba(251, 191, 36, 0.13);
+  }
+  .status-pill.is-failed {
+    color: #b42318;
+    border-color: rgba(220, 38, 38, 0.25);
+    background: rgba(220, 38, 38, 0.08);
+  }
+  .empty-icon { background: rgba(91, 140, 255, 0.08); color: #64748b; }
+  .history-foot { color: #64748b; }
+  .btn-small.is-confirm {
+    color: #b42318;
+    border-color: rgba(220, 38, 38, 0.35);
+    background: rgba(220, 38, 38, 0.08);
+  }
+
+  .app-foot { color: #64748b; }
+  .app-foot span:last-child { color: #475569; }
+
+  .toast {
+    background: #ffffff;
+    border-color: rgba(15, 23, 42, 0.14);
+    border-left-color: #0e7490;
+    box-shadow: 0 18px 40px -22px rgba(15, 23, 42, 0.35);
+    color: #1e293b;
+  }
+  .toast.is-warn { border-left-color: #b45309; }
+  .toast.is-error { border-left-color: #b42318; }
+
+  .telephony-badge {
+    border-color: rgba(8, 145, 178, 0.3);
+    background: rgba(8, 145, 178, 0.08);
+    color: #0e7490;
+  }
+  .telephony-badge::before { box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.12); }
 }

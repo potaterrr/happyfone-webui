@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>HappyPhone WebUI — Agent Console</title>
   <meta name="description" content="HappyPhone WebUI is a Telnyx WebRTC outbound call-center console with an AUX state machine, a live dialer, and persistent call history.">
-  <meta name="theme-color" content="#070b14">
-  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#070b14" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f4f6fb" media="(prefers-color-scheme: light)">
+  <meta name="color-scheme" content="light dark">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%235b8cff'/%3E%3Cpath d='M11 8.5c.5 0 1 .3 1.3.8l1.5 2.4c.4.6.3 1.4-.2 1.9l-1.1 1.1a12 12 0 0 0 4.3 4.3l1.1-1.1c.5-.5 1.3-.6 1.9-.2l2.4 1.5c.5.3.8.8.8 1.3v2.1c0 .9-.8 1.7-1.7 1.6C13.9 23.6 8.4 18.1 7.7 10.2c-.1-.9.7-1.7 1.6-1.7H11Z' fill='%2307121f'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -88,6 +89,15 @@
               <button class="password-toggle" id="password-toggle" type="button" aria-label="Show password" aria-pressed="false">Show</button>
             </div>
           </div>
+
+          <div class="mic-check" id="mic-check" data-state="idle">
+            <span class="mic-check-text">
+              <span class="mic-check-title">Microphone</span>
+              <span class="mic-status" id="mic-status" role="status" aria-live="polite">Not checked yet.</span>
+            </span>
+            <button class="btn btn-quiet btn-small mic-btn" id="mic-btn" type="button">Enable microphone</button>
+          </div>
+          <p class="mic-hint" id="mic-hint">Microphone access requires HTTPS (localhost is the exception).</p>
 
           <p class="form-error" id="login-error" role="alert" hidden></p>
 

@@ -9,6 +9,7 @@ The console connects directly to a Telnyx **SIP Credential Connection** from the
 ## Features
 
 - **Telnyx-only sign-in** — SIP username, agent extension, and SIP password. All three are required, and the extension is used for the agent header.
+- **Microphone preflight** — an **Enable microphone** button requests access before sign-in. Sign-in is blocked until the microphone is available, so the first Telnyx call does not fail on a missing permission.
 - **Live Telnyx calls** — register over WebRTC and place real outbound calls. Mute, hold/resume, DTMF, and hangup drive the Telnyx SDK.
 - **Agent state machine** — `AVAILABLE`, `ON_CALL`, `WRAP_UP`, and `AUX`, with a live timer for the current state.
 - **AUX pauses** — Lunch, Short Break, Bio Break, Coaching, and Training. Selecting any AUX reason pauses the dialer; returning to Available unlocks it.
@@ -17,6 +18,7 @@ The console connects directly to a Telnyx **SIP Credential Connection** from the
 - **Wrap-up** — hanging up starts a 5-second wrap-up countdown before the agent returns to Available.
 - **Persistent call history** — number, start time, duration, and status (`Completed`, `Handled`, `No Answer`, `Failed`). Entries survive reloads, support click-to-dial, and can be cleared.
 - **In-memory session** — the SIP password and login live only in the current tab. A page refresh returns to sign-in.
+- **Automatic light and dark themes** — follows the OS/browser `prefers-color-scheme` setting. No toggle is needed, and dark remains the default for dark systems.
 - **Responsive dark UI** — JetBrains Mono typography, CSS variables, accessible focus states, and reduced-motion support.
 
 ## Sign-in
@@ -30,6 +32,10 @@ The sign-in card asks for three values, in this order:
 | **SIP password** | Telnyx telephony credential password. |
 
 All three must be present. The username and extension can be pre-filled from `js/config.js`; the password field is always left blank.
+
+The card also has a **Microphone** row. Use **Enable microphone** to grant access up front; the tracks are stopped immediately after the permission check. Sign-in requires microphone access, so a blocked or missing microphone stops the flow before Telnyx registration.
+
+**Microphone access requires HTTPS** (or `http://localhost` for local development). Browsers do not expose `getUserMedia` on plain HTTP origins.
 
 ## Configuration
 

@@ -40,6 +40,9 @@ const el = {
   loginError: $('#login-error'),
   loginSubmit: $('#login-submit'),
   loginSubmitLabel: $('#login-submit-label'),
+  micCheck: $('#mic-check'),
+  micStatus: $('#mic-status'),
+  micBtn: $('#mic-btn'),
   telephonyBadge: $('#telephony-badge'),
   appFootMode: $('#app-foot-mode'),
   dialerFineprint: $('#dialer-fineprint'),
@@ -86,6 +89,28 @@ let dialer = null;
 let currentRoute = null;
 let telephony = null;
 let liveSession = null;
+let micGranted = false;
+
+const MIC_STATUS = Object.freeze({
+  idle: 'Not checked yet.',
+  requesting: 'Requesting microphone access…',
+  ready: 'Microphone ready',
+  blocked: 'Microphone permission blocked. Allow it in your browser settings and try again.',
+  notfound: 'No microphone found. Connect a microphone and try again.',
+  inuse: 'Microphone is in use by another app. Close it and try again.',
+  insecure: 'Microphone access requires HTTPS (localhost is the exception).',
+  unsupported: 'This browser cannot access the microphone.',
+  unknown: 'Could not access the microphone. Try again.',
+});
+
+const MIC_FORM_ERROR = Object.freeze({
+  blocked: 'Microphone permission is required. Allow microphone access in your browser, then try again.',
+  notfound: 'No microphone was found. Connect a microphone and try again.',
+  inuse: 'The microphone is in use by another app. Close it and try again.',
+  insecure: 'Microphone access requires HTTPS (localhost is the exception).',
+  unsupported: 'This browser cannot access the microphone. Use a supported browser and try again.',
+  unknown: 'Could not access the microphone. Check your device and try again.',
+});
 
 /* ------------------------------------------------------------- utilities */
 function initialsFor(name) {
@@ -223,6 +248,85 @@ function clearInvalidMarks() {
   [el.username, el.extension, el.password].forEach((input) => input.removeAttribute('aria-invalid'));
 }
 
+/* ------------------------------------------------------------- microphone */
+function micAvailable() {
+  return Boolean(navigator.mediaDevices?.getUserMedia);
+}
+
+function setMicState(state, message) {
+  el.micCheck.dataset.state = state;
+  el.micStatus.textContent = message;
+  el.micCheck.setAttribute('aria-busy', state === 'requesting' ? 'true' : 'false');
+  el.micBtn.hidden = state === 'ready';
+  el.micBtn.disabled = state === 'requesting';
+}
+
+function micErrorState(error) {
+  switch (error?.name) {
+    case 'NotAllowedError':
+    case 'SecurityError':
+    case 'PermissionDeniedError':
+    case 'AbortError':
+      return 'blocked';
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+    case 'OverconstrainedError':
+      return 'notfound';
+    case 'NotReadableError':
+    case 'TrackStartError':
+      return 'inuse';
+    default:
+      return 'unknown';
+  }
+}
+
+/** Request microphone access and stop the tracks immediately after success. */
+async function requestMicrophone() {
+  if (!micAvailable()) {
+    const state = window.isSecureContext ? 'unsupported' : 'insecure';
+    setMicState('error', MIC_STATUS[state]);
+    return { ok: false, state };
+  }
+
+  setMicState('requesting', MIC_STATUS.requesting);
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((track) => track.stop());
+    micGranted = true;
+    setMicState('ready', MIC_STATUS.ready);
+    return { ok: true, state: 'ready' };
+  } catch (error) {
+    micGranted = false;
+    const state = micErrorState(error);
+    setMicState('error', MIC_STATUS[state]);
+    return { ok: false, state };
+  }
+}
+
+/** Pick up an existing browser grant so we do not prompt again needlessly. */
+async function syncMicPermission() {
+  if (!micAvailable() || !navigator.permissions?.query) return;
+
+  try {
+    const permission = await navigator.permissions.query({ name: 'microphone' });
+    const apply = () => {
+      if (permission.state === 'granted') {
+        micGranted = true;
+        setMicState('ready', MIC_STATUS.ready);
+      } else if (permission.state === 'denied') {
+        micGranted = false;
+        setMicState('error', MIC_STATUS.blocked);
+      }
+    };
+
+    apply();
+    permission.addEventListener?.('change', apply);
+  } catch {
+    /* Microphone permission queries are not supported everywhere. */
+  }
+}
+
 function bindLogin() {
   [el.username, el.extension, el.password].forEach((input) => {
     input.addEventListener('input', () => {
@@ -238,6 +342,11 @@ function bindLogin() {
     el.passwordToggle.setAttribute('aria-pressed', String(!showing));
     el.passwordToggle.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
     el.password.focus({ preventScroll: true });
+  });
+
+  el.micBtn.addEventListener('click', () => {
+    el.loginError.hidden = true;
+    void requestMicrophone();
   });
 
   el.loginForm.addEventListener('submit', async (event) => {
@@ -260,9 +369,25 @@ function bindLogin() {
       return;
     }
 
+    el.loginError.hidden = true;
+
+    /* Microphone permission is a precondition: never register with Telnyx
+       without it, otherwise the first call fails after signalling succeeds. */
+    if (!micGranted) {
+      el.loginSubmit.disabled = true;
+      el.loginSubmitLabel.textContent = 'Checking microphone…';
+      const mic = await requestMicrophone();
+
+      if (!mic.ok) {
+        setLoginError(MIC_FORM_ERROR[mic.state] || MIC_FORM_ERROR.unknown);
+        el.loginSubmit.disabled = false;
+        el.loginSubmitLabel.textContent = 'Sign in';
+        return;
+      }
+    }
+
     el.loginSubmit.disabled = true;
     el.loginSubmitLabel.textContent = 'Connecting…';
-    el.loginError.hidden = true;
 
     let nextTelephony = null;
 
@@ -362,6 +487,7 @@ function init() {
   applyConfigDefaults();
   updateTelephonyChrome(false);
   bindLogin();
+  void syncMicPermission();
   el.logoutBtn.addEventListener('click', logout);
   window.addEventListener('hashchange', renderRoute);
   window.addEventListener('popstate', renderRoute);

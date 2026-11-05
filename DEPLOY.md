@@ -49,7 +49,7 @@ Pick one:
 - **Caddy** — put Caddy in front of nginx and let it obtain certificates automatically.
 - **certbot** — run `sudo certbot --nginx -d your.domain` and let it add the TLS listener.
 
-After HTTPS works, confirm the page loads at `https://your.domain/` and the browser prompts for microphone access at sign-in.
+After HTTPS works, confirm the page loads at `https://your.domain/` and the browser prompts for microphone access when you click **Enable microphone** on the sign-in card (or when you sign in).
 
 ## 4. Optional: set config defaults
 
