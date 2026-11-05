@@ -142,4 +142,6 @@ deploy/nginx.conf   Starter nginx server block
 
 This repository is the standalone source of truth for the HappyPhone WebUI. Pushes to `main` deploy the repository root through GitHub Pages.
 
+For Dave's deployment to https://happyphone.lol/caller/, see [instructions.txt](instructions.txt).
+
 The public project card lives in the `potaterrr.github.io` repository under `/projects/happyfone-webui/` and links to this deployment.

@@ -1,0 +1,250 @@
+HAPPYPHONE WEBUI - DEPLOYMENT INSTRUCTIONS FOR DAVE
+Target: https://happyphone.lol/caller/
+Package: happyphone-webui.zip
+============================================================
+
+Dave,
+
+This package is the HappyPhone agent console: a static site with
+Telnyx WebRTC outbound calling. Read the warning below before you
+copy anything to the server.
+
+QUICK CHECKLIST
+---------------
+[ ] Confirm whether to REPLACE the current /caller app or deploy elsewhere.
+[ ] Back up /var/www/happyphone.lol/caller BEFORE overwriting anything.
+[ ] Confirm what currently serves /caller (static nginx, Node/Next,
+    Cloudflare, or a reverse proxy).
+[ ] Upload and unzip the package into /var/www/happyphone.lol/caller.
+[ ] Make sure JS and CSS are served as real static files with the
+    correct Content-Type - not index.html.
+[ ] Reload nginx and verify with curl + a browser sign-in.
+[ ] Delete instructions.txt from the web root after deployment.
+
+1. IMPORTANT - WHAT IS LIVE AT /caller/ RIGHT NOW
+------------------------------------------------
+https://happyphone.lol/caller/ currently serves a DIFFERENT app:
+
+    "Caller | HappyPhone"
+
+That app is a Discord-login internal softphone with an archived
+extension login. It is NOT this package.
+
+Before you overwrite it, confirm with the owner:
+
+    Do they want to REPLACE that Discord app with this console,
+    or should this console be deployed somewhere else?
+
+Do not overwrite /caller until that is confirmed.
+
+If replacement is confirmed, back up the current directory first:
+
+    sudo cp -a /var/www/happyphone.lol/caller \
+      /var/www/happyphone.lol/caller.bak.$(date +%Y%m%d-%H%M%S)
+
+Keep that backup until the new site has been verified.
+
+2. WHAT IS IN THIS PACKAGE
+--------------------------
+    index.html          Site entry point (at the ZIP root)
+    css/styles.css      Styles, including light/dark themes
+    js/app.js           ES module loaded by index.html
+    js/config.js        Optional Telnyx SIP defaults (blank)
+    js/dialer.js        Dialer and call history
+    js/telephony.js     Telnyx WebRTC adapter
+    js/aux.js           Agent state machine
+    DEPLOY.md           Static deployment notes
+    deploy/nginx.conf   Starter nginx server block
+    README.md           Project documentation
+    .gitignore          Git ignore rules
+    instructions.txt    This file (not needed at runtime)
+
+3. HOW THE SITE LOADS
+---------------------
+This is a plain static site. There is no build step and no server
+runtime required.
+
+index.html loads js/app.js as an ES module. Do not rename index.html
+to app.js, and do not rename or move the js/ or css/ directories.
+
+The site uses hash routing:
+
+    #/login-webui
+    #/dashboard
+
+Hash routes work on refresh and direct access without a server-side
+rewrite.
+
+4. STATIC FILE SERVING - IMPORTANT
+----------------------------------
+The current server appears to return index.html for unknown paths,
+including /caller/js/app.js. That is wrong for this package.
+
+Every file must be served as a real static file:
+
+    .js   -> application/javascript
+    .css  -> text/css
+    .html -> text/html
+
+If /caller/js/app.js returns HTML, the browser will fail to load the
+console. Check the response headers and body after deployment.
+
+Also confirm whether /caller is currently a static directory or a
+Node/Next/Cloudflare application. If it is a Node, Next.js, or
+Cloudflare app rather than a static directory, SSH + copying files
+may not be enough. Ask for that app's build and deploy process
+before changing it.
+
+5. TARGET PATH AND NGINX
+-----------------------
+Target filesystem path for a static nginx setup:
+
+    /var/www/happyphone.lol/caller
+
+nginx location block:
+
+    location = /caller { return 301 /caller/; }
+    location /caller/ {
+        root /var/www/happyphone.lol;
+        index index.html;
+        try_files $uri $uri/ /caller/index.html;
+    }
+
+The try_files fallback is only a safety net for the hash-routed app.
+Real files such as /caller/js/app.js must still be found on disk
+and served with a JavaScript content type.
+
+6. DEPLOY COMMANDS - STATIC NGINX SETUP
+---------------------------------------
+Run these only after the warnings above are resolved.
+
+    scp happyphone-webui.zip user@server:/tmp/
+    ssh user@server
+    sudo mkdir -p /var/www/happyphone.lol/caller
+    sudo cp -a /var/www/happyphone.lol/caller /var/www/happyphone.lol/caller.bak.$(date +%Y%m%d-%H%M%S)
+    sudo unzip -o /tmp/happyphone-webui.zip -d /var/www/happyphone.lol/caller
+    sudo chown -R www-data:www-data /var/www/happyphone.lol/caller
+    sudo nginx -t && sudo systemctl reload nginx
+
+If the target directory is empty on a first deploy, the cp backup
+command may report "No such file or directory". That is fine, but
+confirm the path first.
+
+Add or adapt the nginx location block from section 5 in the server
+block that handles happyphone.lol, then test and reload.
+
+7. TELNYX CREDENTIALS AND CONFIG
+--------------------------------
+The package ships js/config.js with blank values:
+
+    username:  ''
+    extension: ''
+    password:  ''
+
+Dave can either:
+
+  A. Edit js/config.js on the server with a Telnyx SIP username,
+     agent extension, and SIP password, or
+  B. Leave it blank and let agents enter their own values on the
+     sign-in screen.
+
+A Telnyx API key will NOT work in the browser WebRTC SDK. These are
+SIP credentials, not API credentials.
+
+Anything placed in js/config.js is served to every visitor and is
+public. Do not put secrets there that must stay private. For real
+production, prefer a server-side JWT/token flow so SIP credentials
+never reach the browser.
+
+Do not commit credentials to Git.
+
+8. MICROPHONE AND HTTPS
+-----------------------
+Microphone access requires HTTPS, except on localhost.
+
+The app includes an "Enable microphone" button. Sign-in checks the
+microphone before connecting to Telnyx.
+
+deploy/nginx.conf includes:
+
+    Permissions-Policy: microphone=(self)
+
+Make sure HTTPS is active for happyphone.lol before testing calls.
+Cloudflare, Caddy, or certbot can terminate TLS in front of nginx.
+
+9. URLS AFTER DEPLOY
+--------------------
+    https://happyphone.lol/caller/
+    https://happyphone.lol/caller/#/login-webui
+    https://happyphone.lol/caller/#/dashboard
+
+10. VERIFY THE DEPLOY
+---------------------
+Check the page and the JavaScript file:
+
+    curl -I https://happyphone.lol/caller/
+    curl -I https://happyphone.lol/caller/js/app.js
+
+The first should return 200 with an HTML content type.
+
+The second must return 200 with a JavaScript content type, typically:
+
+    Content-Type: application/javascript
+
+It must NOT return HTML. Also inspect the body:
+
+    curl -s https://happyphone.lol/caller/js/app.js | head
+
+You should see JavaScript, not "<!doctype html>".
+
+Then open https://happyphone.lol/caller/ in a browser:
+
+    1. Click "Enable microphone" and allow access.
+    2. Sign in with Telnyx SIP credentials.
+    3. Confirm the dashboard loads.
+    4. Place an outbound call and test mute, hold, DTMF, and hangup.
+
+11. ROLLBACK
+------------
+If anything fails, restore the backup directory and reload nginx.
+
+    sudo rm -rf /var/www/happyphone.lol/caller
+    sudo mv /var/www/happyphone.lol/caller.bak.YYYYMMDD-HHMMSS \
+      /var/www/happyphone.lol/caller
+    sudo nginx -t && sudo systemctl reload nginx
+
+Only run the rm command after confirming the backup exists and the
+backup path is correct.
+
+12. QUESTIONS FOR DAVE / OWNER
+------------------------------
+Please confirm before touching production:
+
+1. Replace or keep the Discord app?
+   Should this console replace "Caller | HappyPhone" at /caller/,
+   or should it be deployed on a different hostname or path?
+
+2. What serves /caller today?
+   Static nginx directory, Node/Next.js, Cloudflare Pages/Worker,
+   or a reverse proxy? If it is not a static directory, what is the
+   correct deploy process?
+
+3. What is the exact target path?
+   Is /var/www/happyphone.lol/caller correct on this server?
+
+4. Do you have sudo and nginx reload permission?
+   If not, who performs the deploy and reload?
+
+5. Preload Telnyx credentials or not?
+   Should js/config.js be edited on the server, or should agents
+   enter their SIP username, extension, and password at sign-in?
+
+13. NOTES
+---------
+instructions.txt is documentation only. It is not needed at runtime
+and can be deleted from the web root after deployment.
+
+Keep the backup until the site, microphone permission, and an
+outbound Telnyx call have all been verified.
+
+Do not expose credentials in tickets, chat, screenshots, or commits.

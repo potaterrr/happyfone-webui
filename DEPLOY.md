@@ -2,6 +2,8 @@
 
 HappyPhone WebUI is a static site: there is no build step and no server-side runtime. You upload files to a web root and serve them over HTTPS.
 
+For the happyphone.lol/caller deployment checklist and server commands, see `instructions.txt`.
+
 ## 1. Unzip into the web root
 
 The ZIP has `index.html` at its root, alongside `css/`, `js/`, `deploy/`, `README.md`, and `DEPLOY.md`.
