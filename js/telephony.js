@@ -1,13 +1,11 @@
 /**
- * telephony.js — Telnyx WebRTC test-mode adapter.
+ * telephony.js — Telnyx WebRTC adapter.
  *
- * This is a TEST-ONLY path: the browser connects directly to a Telnyx SIP
- * Credential Connection. Production should use the JWT + Kamailio/RTPEngine
- * gateway described in the HappyPhone setup notes, so SIP credentials never
- * reach the browser.
+ * The browser registers directly with a Telnyx SIP Credential Connection.
+ * For real production, prefer a server-side JWT/token flow so SIP credentials
+ * never reach the browser.
  *
- * The SDK is loaded lazily, only when the user picks "Telnyx test", so the
- * simulation path stays dependency-free.
+ * The SDK is loaded lazily on first connect.
  */
 
 const TELNYX_SDK_URL = 'https://cdn.jsdelivr.net/npm/@telnyx/webrtc@2.28.2/lib/bundle.mjs';
@@ -100,7 +98,7 @@ export class TelnyxTelephony {
 
     const call = notification.call;
 
-    /* Outbound-only test mode: ignore a second, unrelated call. */
+    /* Outbound-only: ignore a second, unrelated call. */
     if (this.call && call.id && this.call.id && call.id !== this.call.id) return;
     this.call = call;
 

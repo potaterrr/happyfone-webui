@@ -1,7 +1,7 @@
 /**
- * dialer.js — keypad input, simulated call lifecycle, and persistent call history.
+ * dialer.js — keypad input, Telnyx call lifecycle, and persistent call history.
  *
- * Call physics: AVAILABLE → dial → 3s ringing → connected → hangup → WRAP_UP (5s).
+ * Call flow: AVAILABLE → dial → ringing → connected → hangup → WRAP_UP (5s).
  */
 
 import {
@@ -11,10 +11,9 @@ import {
   formatStateTime,
 } from './aux.js';
 
-const HISTORY_KEY = 'happyfone.history.v1';
+const HISTORY_KEY = 'happyphone.history.v1';
 const MAX_HISTORY = 50;
 const MAX_NUMBER_LENGTH = 20;
-const RING_MS = 3000;
 const KEY_FLASH_MS = 140;
 const DTMF_CLEAR_MS = 900;
 
@@ -91,9 +90,8 @@ export class Dialer {
     this.el = elements;
     this.notify = notify;
     this.call = null;
-    this.connectTimer = null;
     this.telephony = null;
-    this.liveEndTimer = null;
+    this.endTimer = null;
     this.history = readHistory();
     this.confirmClearTimer = null;
     this.confirmClear = false;
@@ -106,16 +104,12 @@ export class Dialer {
     machine.subscribe(() => this.syncAvailability());
   }
 
-  /** Wire a live telephony adapter. Pass null to fall back to simulation. */
+  /** Wire the Telnyx telephony adapter. */
   setTelephony(telephony) {
     this.telephony = telephony || null;
     if (this.telephony) {
       this.telephony.onEvent = (event) => this.#onTelephonyEvent(event);
     }
-  }
-
-  get isLive() {
-    return Boolean(this.telephony?.isLive);
   }
 
   #bind() {
@@ -288,7 +282,7 @@ export class Dialer {
 
   #sendDtmf(key) {
     this.#flashKey(key);
-    if (this.isLive) this.telephony.sendDtmf(key);
+    this.telephony?.sendDtmf(key);
 
     const chip = this.el.callDtmf;
     if (!chip) return;
@@ -386,6 +380,10 @@ export class Dialer {
 
   startCall() {
     if (this.call) return;
+    if (!this.telephony) {
+      this.notify('Telnyx is not connected. Sign in again.', 'warn');
+      return;
+    }
     if (!this.machine.canDial()) {
       this.notify('Dialing is paused. Return to Available first.', 'warn');
       return;
@@ -410,32 +408,15 @@ export class Dialer {
       heldUsed: false,
     };
 
-    if (this.isLive) {
-      this.#renderCall();
-      this.syncAvailability();
-      this.notify(`Calling ${number}…`);
-      try {
-        this.telephony.call(number);
-      } catch (error) {
-        this.#finishCall('failed', error?.message || 'Could not place the call.');
-      }
-      return;
-    }
-
-    this.connectTimer = window.setTimeout(() => this.#connect(), RING_MS);
     this.#renderCall();
     this.syncAvailability();
     this.notify(`Calling ${number}…`);
-  }
 
-  #connect() {
-    if (!this.call || this.call.phase !== 'ringing') return;
-    this.call.phase = 'connected';
-    this.call.connectedAt = Date.now();
-    this.connectTimer = null;
-    this.#renderCall();
-    this.syncAvailability();
-    this.notify('Call connected.');
+    try {
+      this.telephony.call(number);
+    } catch (error) {
+      this.#finishCall('failed', error?.message || 'Could not place the call.');
+    }
   }
 
   #onTelephonyEvent(event) {
@@ -472,8 +453,8 @@ export class Dialer {
   #finishCall(cause = 'NORMAL_CLEARING', message = '') {
     if (!this.call) return;
 
-    if (this.liveEndTimer) window.clearTimeout(this.liveEndTimer);
-    this.liveEndTimer = null;
+    if (this.endTimer) window.clearTimeout(this.endTimer);
+    this.endTimer = null;
 
     const call = this.call;
     const now = Date.now();
@@ -500,7 +481,7 @@ export class Dialer {
   toggleMute() {
     if (!this.call || this.call.phase !== 'connected') return;
     this.call.muted = !this.call.muted;
-    if (this.isLive) this.telephony.setMuted(this.call.muted);
+    this.telephony?.setMuted(this.call.muted);
     this.#renderCall();
     this.notify(this.call.muted ? 'Microphone muted.' : 'Microphone live.');
   }
@@ -509,7 +490,7 @@ export class Dialer {
     if (!this.call || this.call.phase !== 'connected') return;
     this.call.held = !this.call.held;
     if (this.call.held) this.call.heldUsed = true;
-    if (this.isLive) this.telephony.setHeld(this.call.held);
+    this.telephony?.setHeld(this.call.held);
     this.#renderCall();
     this.notify(this.call.held ? 'Call on hold.' : 'Call resumed.');
   }
@@ -517,52 +498,26 @@ export class Dialer {
   hangup() {
     if (!this.call) return;
 
-    if (this.isLive) {
-      try {
-        this.telephony.hangup();
-      } catch {
-        /* Ignore signalling races. */
-      }
-      if (this.liveEndTimer) window.clearTimeout(this.liveEndTimer);
-      this.liveEndTimer = window.setTimeout(() => {
-        this.liveEndTimer = null;
-        this.#finishCall('NORMAL_CLEARING');
-      }, 2500);
-      return;
+    try {
+      this.telephony?.hangup();
+    } catch {
+      /* Ignore signalling races. */
     }
-
-    const call = this.call;
-    const now = Date.now();
-    const connected = call.phase === 'connected';
-    const durationSec = connected ? Math.max(0, Math.floor((now - call.connectedAt) / 1000)) : 0;
-    let status = 'No Answer';
-    if (connected) status = call.heldUsed ? 'Handled' : 'Completed';
-
-    this.#recordCall({
-      number: call.number,
-      startedAt: call.startedAt,
-      durationSec,
-      status,
-    });
-
-    this.#clearCallState();
-    this.machine.endCall();
-    this.syncAvailability();
-    this.notify(`Call ended — ${status.toLowerCase()}, logged to history.`);
+    if (this.endTimer) window.clearTimeout(this.endTimer);
+    this.endTimer = window.setTimeout(() => {
+      this.endTimer = null;
+      this.#finishCall('NORMAL_CLEARING');
+    }, 2500);
   }
 
-  /** Used by logout. Cancels the simulation without writing history. */
+  /** Used by logout. Cancels the active call without writing history. */
   abortActiveCall() {
-    if (this.connectTimer) window.clearTimeout(this.connectTimer);
-    this.connectTimer = null;
-    if (this.liveEndTimer) window.clearTimeout(this.liveEndTimer);
-    this.liveEndTimer = null;
-    if (this.isLive) {
-      try {
-        this.telephony.hangup();
-      } catch {
-        /* Ignore signalling races. */
-      }
+    if (this.endTimer) window.clearTimeout(this.endTimer);
+    this.endTimer = null;
+    try {
+      this.telephony?.hangup();
+    } catch {
+      /* Ignore signalling races. */
     }
     this.call = null;
     if (this.el.callPanel) this.el.callPanel.hidden = true;
@@ -572,10 +527,8 @@ export class Dialer {
   }
 
   #clearCallState() {
-    if (this.connectTimer) window.clearTimeout(this.connectTimer);
-    this.connectTimer = null;
-    if (this.liveEndTimer) window.clearTimeout(this.liveEndTimer);
-    this.liveEndTimer = null;
+    if (this.endTimer) window.clearTimeout(this.endTimer);
+    this.endTimer = null;
     this.call = null;
     this.el.callPanel.hidden = true;
     this.el.callPanel.classList.remove('is-ringing', 'is-held', 'is-connected');

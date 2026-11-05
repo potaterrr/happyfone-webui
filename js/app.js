@@ -1,5 +1,5 @@
 /**
- * app.js — hash router, mock auth/session guard, header rendering, and app wiring.
+ * app.js — hash router, Telnyx session guard, header rendering, and app wiring.
  *
  * GitHub Pages is static, so routing uses hashes:
  *   #/login-webui  → sign-in
@@ -15,11 +15,7 @@ import {
 } from './aux.js';
 import { Dialer } from './dialer.js';
 import { TelnyxTelephony } from './telephony.js';
-
-const TOKEN_KEY = 'happyfone.token';
-const USER_KEY = 'happyfone.user';
-const MODE_KEY = 'happyfone.mode';
-const TOKEN_TTL_SECONDS = 12 * 60 * 60;
+import { TELNYX_CONFIG } from './config.js';
 
 const ROUTES = Object.freeze({
   LOGIN: 'login',
@@ -33,18 +29,6 @@ const HASH = Object.freeze({
 
 const $ = (selector) => document.querySelector(selector);
 
-const storage = {
-  get(key) {
-    try { return localStorage.getItem(key); } catch { return null; }
-  },
-  set(key, value) {
-    try { localStorage.setItem(key, value); } catch { /* ignore */ }
-  },
-  remove(key) {
-    try { localStorage.removeItem(key); } catch { /* ignore */ }
-  },
-};
-
 const el = {
   loginView: $('#view-login'),
   dashboardView: $('#view-dashboard'),
@@ -54,14 +38,8 @@ const el = {
   password: $('#login-password'),
   passwordToggle: $('#password-toggle'),
   loginError: $('#login-error'),
-  loginTitle: $('#login-title'),
-  loginCopy: $('#login-copy'),
   loginSubmit: $('#login-submit'),
   loginSubmitLabel: $('#login-submit-label'),
-  modeNoteText: $('#mode-note-text'),
-  loginNoteText: $('#login-note-text'),
-  featureCall: $('#feature-call'),
-  modeButtons: document.querySelectorAll('.mode-option[data-mode]'),
   telephonyBadge: $('#telephony-badge'),
   appFootMode: $('#app-foot-mode'),
   dialerFineprint: $('#dialer-fineprint'),
@@ -108,42 +86,8 @@ let dialer = null;
 let currentRoute = null;
 let telephony = null;
 let liveSession = null;
-let loginMode = storage.get(MODE_KEY) === 'telnyx' ? 'telnyx' : 'simulation';
 
 /* ------------------------------------------------------------- utilities */
-function base64UrlEncodeJson(value) {
-  const bytes = new TextEncoder().encode(JSON.stringify(value));
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function base64UrlDecodeJson(value) {
-  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
-  const binary = atob(padded);
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  return JSON.parse(new TextDecoder().decode(bytes));
-}
-
-function createDummyJwt(user) {
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: 'HS256', typ: 'JWT' };
-  const payload = {
-    sub: user.username,
-    name: user.username,
-    extension: user.extension,
-    role: 'agent',
-    iat: now,
-    exp: now + TOKEN_TTL_SECONDS,
-  };
-  return [
-    base64UrlEncodeJson(header),
-    base64UrlEncodeJson(payload),
-    base64UrlEncodeJson({ demo: true, signature: 'happyfone-local' }),
-  ].join('.');
-}
-
 function initialsFor(name) {
   return name
     .split(/[\s._-]+/)
@@ -151,7 +95,7 @@ function initialsFor(name) {
     .slice(0, 2)
     .map((part) => part[0])
     .join('')
-    .toUpperCase() || 'HF';
+    .toUpperCase() || 'HP';
 }
 
 function applyAgent(user) {
@@ -160,8 +104,15 @@ function applyAgent(user) {
   el.agentAvatar.textContent = initialsFor(user.username);
 }
 
+/** Prefill the non-secret fields from config.js when they are blank. */
+function applyConfigDefaults() {
+  if (!el.username.value) el.username.value = TELNYX_CONFIG.username || '';
+  if (!el.extension.value) el.extension.value = TELNYX_CONFIG.extension || '';
+}
+
 function resetLoginForm() {
   el.loginForm.reset();
+  applyConfigDefaults();
   el.password.type = 'password';
   el.passwordToggle.textContent = 'Show';
   el.passwordToggle.setAttribute('aria-pressed', 'false');
@@ -170,52 +121,8 @@ function resetLoginForm() {
 
 function updateTelephonyChrome(live) {
   el.telephonyBadge.hidden = !live;
-  el.appFootMode.textContent = live
-    ? 'Telnyx test mode · outbound calls only'
-    : 'Simulated telephony environment · local demo data';
-  el.dialerFineprint.textContent = live
-    ? 'Telnyx test call · outbound only · 5s wrap-up after hangup'
-    : 'Simulated call · rings 3s · 5s wrap-up after hangup';
-}
-
-function setLoginMode(mode) {
-  loginMode = mode === 'telnyx' ? 'telnyx' : 'simulation';
-  storage.set(MODE_KEY, loginMode);
-
-  const live = loginMode === 'telnyx';
-
-  /* Do not let a stale demo session bypass the Telnyx sign-in. */
-  if (live) {
-    storage.remove(TOKEN_KEY);
-    storage.remove(USER_KEY);
-  }
-
-  el.modeButtons.forEach((button) => {
-    const active = button.dataset.mode === loginMode;
-    button.classList.toggle('is-active', active);
-    button.setAttribute('aria-pressed', String(active));
-  });
-
-  el.username.maxLength = live ? 128 : 48;
-  el.username.placeholder = live ? 'gencred…' : 'alex.rivera';
-  el.username.closest('.field').querySelector('label').textContent = live ? 'SIP username' : 'Username';
-  el.extension.closest('.field').querySelector('label').textContent = live ? 'Agent extension' : 'Extension';
-  el.password.closest('.field').querySelector('label').textContent = live ? 'SIP password' : 'Password';
-
-  el.loginTitle.textContent = live ? 'Telnyx test mode' : 'Welcome back';
-  el.loginCopy.textContent = live
-    ? 'Enter your Telnyx SIP credential to register and place real outbound test calls.'
-    : 'Enter your agent credentials to open the console.';
-  el.loginSubmitLabel.textContent = live ? 'Connect & sign in' : 'Sign in';
-  el.modeNoteText.textContent = live
-    ? 'Test mode — credentials stay in this tab and are never saved.'
-    : 'Demo environment — any non-empty credentials will sign you in.';
-  el.loginNoteText.textContent = live
-    ? 'Telnyx test mode · real outbound calls'
-    : 'Simulated telephony sandbox · no real calls are placed';
-  el.featureCall.textContent = live
-    ? 'Live Telnyx outbound test calls'
-    : 'Simulated WebRTC call lifecycle';
+  el.appFootMode.textContent = 'Telnyx WebRTC · outbound calls';
+  el.dialerFineprint.textContent = 'Telnyx call · outbound only · 5s wrap-up after hangup';
 }
 
 function toast(message, tone = 'info') {
@@ -237,40 +144,10 @@ function toast(message, tone = 'info') {
 /* ------------------------------------------------------------- auth */
 function clearSession() {
   liveSession = null;
-  storage.remove(TOKEN_KEY);
-  storage.remove(USER_KEY);
-}
-
-function saveSession(user) {
-  storage.set(TOKEN_KEY, createDummyJwt(user));
-  storage.set(USER_KEY, JSON.stringify(user));
 }
 
 function getSession() {
-  if (liveSession) return liveSession;
-
-  /* Telnyx sessions live only in memory: the SIP client cannot survive a
-     reload, so a refresh must go back through the sign-in screen. */
-  if (loginMode === 'telnyx') return null;
-
-  const token = storage.get(TOKEN_KEY);
-  if (!token) return null;
-
-  try {
-    const payload = base64UrlDecodeJson(token.split('.')[1] || '');
-    if (!payload?.exp || payload.exp * 1000 <= Date.now()) throw new Error('expired');
-
-    const rawUser = storage.get(USER_KEY);
-    const stored = rawUser ? JSON.parse(rawUser) : null;
-    const username = stored?.username || payload.sub || payload.name;
-    const extension = stored?.extension || payload.extension;
-    if (!username || !extension) throw new Error('incomplete');
-
-    return { username: String(username), extension: String(extension) };
-  } catch {
-    clearSession();
-    return null;
-  }
+  return liveSession;
 }
 
 /* ------------------------------------------------------------- routing */
@@ -286,8 +163,8 @@ function resolveRoute() {
   let route = parseRoute();
 
   /* The sign-in screen always comes first: an empty hash lands on login and
-     an explicit #/login-webui never bounces to the dashboard, even when a
-     stored session still exists. Only #/dashboard requires a session. */
+     an explicit #/login-webui never bounces to the dashboard. Only
+     #/dashboard requires a live in-memory Telnyx session. */
   if (!route) route = ROUTES.LOGIN;
   if (!session && route === ROUTES.DASHBOARD) route = ROUTES.LOGIN;
 
@@ -300,8 +177,8 @@ function showView(route) {
   el.dashboardView.hidden = !isDashboard;
   currentRoute = route;
   document.title = isDashboard
-    ? 'Agent Console · HappyFone WebUI'
-    : 'Sign in · HappyFone WebUI';
+    ? 'Agent Console · HappyPhone WebUI'
+    : 'Sign in · HappyPhone WebUI';
 }
 
 function renderRoute() {
@@ -316,7 +193,7 @@ function renderRoute() {
 
   if (route === ROUTES.DASHBOARD && session) {
     applyAgent(session);
-    updateTelephonyChrome(Boolean(liveSession));
+    updateTelephonyChrome(Boolean(telephony));
     dialer?.syncAvailability();
   }
 
@@ -354,13 +231,6 @@ function bindLogin() {
     });
   });
 
-  el.modeButtons.forEach((button) => {
-    button.addEventListener('click', () => {
-      setLoginMode(button.dataset.mode);
-      el.loginError.hidden = true;
-    });
-  });
-
   el.passwordToggle.addEventListener('click', () => {
     const showing = el.password.type === 'text';
     el.password.type = showing ? 'password' : 'text';
@@ -374,9 +244,9 @@ function bindLogin() {
     event.preventDefault();
     clearInvalidMarks();
 
-    const username = el.username.value.trim();
-    const extension = el.extension.value.trim();
-    const password = el.password.value;
+    const username = el.username.value.trim() || TELNYX_CONFIG.username;
+    const extension = el.extension.value.trim() || TELNYX_CONFIG.extension;
+    const password = el.password.value || TELNYX_CONFIG.password;
 
     const missing = [];
     if (!username) missing.push(el.username);
@@ -385,53 +255,41 @@ function bindLogin() {
 
     if (missing.length > 0) {
       missing.forEach((input) => input.setAttribute('aria-invalid', 'true'));
-      setLoginError('Enter your username, extension, and password to continue.');
+      setLoginError('Enter your SIP username, agent extension, and password to continue.');
       missing[0].focus({ preventScroll: true });
       return;
     }
 
-    if (loginMode === 'telnyx') {
-      el.loginSubmit.disabled = true;
-      el.loginSubmitLabel.textContent = 'Connecting…';
-      el.loginError.hidden = true;
+    el.loginSubmit.disabled = true;
+    el.loginSubmitLabel.textContent = 'Connecting…';
+    el.loginError.hidden = true;
 
-      let nextTelephony = null;
+    let nextTelephony = null;
 
-      try {
-        nextTelephony = new TelnyxTelephony();
-        await nextTelephony.connect({ login: username, password });
+    try {
+      nextTelephony = new TelnyxTelephony();
+      await nextTelephony.connect({ login: username, password });
 
-        telephony = nextTelephony;
-        dialer.setTelephony(telephony);
-        liveSession = { username, extension, mode: 'telnyx' };
-        machine.reset();
-        applyAgent(liveSession);
-        resetLoginForm();
-        updateTelephonyChrome(true);
-        navigate(ROUTES.DASHBOARD, { replace: true });
-        toast('Connected to Telnyx. Ready for test calls.');
-      } catch (error) {
-        if (nextTelephony) await nextTelephony.disconnect();
-        telephony = null;
-        dialer.setTelephony(null);
-        liveSession = null;
-        setLoginError(error?.message || 'Could not connect to Telnyx.');
-        toast('Telnyx connection failed.', 'error');
-      } finally {
-        el.loginSubmit.disabled = false;
-        el.loginSubmitLabel.textContent = loginMode === 'telnyx' ? 'Connect & sign in' : 'Sign in';
-      }
-      return;
+      telephony = nextTelephony;
+      dialer.setTelephony(telephony);
+      liveSession = { username, extension, mode: 'telnyx' };
+      machine.reset();
+      applyAgent(liveSession);
+      resetLoginForm();
+      updateTelephonyChrome(true);
+      navigate(ROUTES.DASHBOARD, { replace: true });
+      toast('Connected to Telnyx. Ready for calls.');
+    } catch (error) {
+      if (nextTelephony) await nextTelephony.disconnect();
+      telephony = null;
+      dialer.setTelephony(null);
+      liveSession = null;
+      setLoginError(error?.message || 'Could not connect to Telnyx.');
+      toast('Telnyx connection failed.', 'error');
+    } finally {
+      el.loginSubmit.disabled = false;
+      el.loginSubmitLabel.textContent = 'Sign in';
     }
-
-    const user = { username, extension };
-    saveSession(user);
-    machine.reset();
-    applyAgent(user);
-    resetLoginForm();
-    updateTelephonyChrome(false);
-    navigate(ROUTES.DASHBOARD, { replace: true });
-    toast(`Signed in as ${user.username}.`);
   });
 }
 
@@ -451,7 +309,7 @@ async function logout() {
   dialer?.clearHistory();
   machine.reset();
   clearSession();
-  el.loginForm.reset();
+  resetLoginForm();
   el.loginError.hidden = true;
   updateTelephonyChrome(false);
   navigate(ROUTES.LOGIN, { replace: true });
@@ -501,7 +359,7 @@ function init() {
   bindAuxSelect(el.auxSelect, machine, { notify: toast });
   machine.subscribe(renderStatus);
 
-  setLoginMode(loginMode);
+  applyConfigDefaults();
   updateTelephonyChrome(false);
   bindLogin();
   el.logoutBtn.addEventListener('click', logout);

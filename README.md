@@ -1,26 +1,52 @@
-# HappyFone WebUI
+# HappyPhone WebUI
 
-A production-style, dependency-free agent console for an outbound call center. Built with vanilla HTML, CSS, and ES modules for GitHub Pages.
+A production, dependency-free agent console for Telnyx WebRTC outbound calling. Built with vanilla HTML, CSS, and ES modules for static hosting.
 
 **Live:** https://potaterrr.github.io/happyfone-webui/
 
-The console has two telephony modes:
-
-- **Simulation** — the original demo. Any non-empty credentials sign you in, and calls are simulated end to end.
-- **Telnyx test** — the browser registers directly with a Telnyx SIP Credential Connection and places real outbound calls. This is a test-only path; production should use the JWT + Kamailio/RTPEngine gateway described below.
+The console connects directly to a Telnyx **SIP Credential Connection** from the browser and places real outbound calls. Signing in registers a live Telnyx WebRTC client.
 
 ## Features
 
-- **Two telephony modes** — pick Simulation or Telnyx test on the sign-in screen.
-- **Mock auth and session guard (Simulation)** — username, extension, and password. A dummy JWT and user profile are stored in `localStorage`. Direct visits to the dashboard without a valid session redirect to sign-in.
-- **Telnyx test calls** — enter a Telnyx SIP username and password, register over WebRTC, and place real outbound calls. Mute, hold/resume, DTMF, and hangup drive the Telnyx SDK.
+- **Telnyx-only sign-in** — SIP username, agent extension, and SIP password. All three are required, and the extension is used for the agent header.
+- **Live Telnyx calls** — register over WebRTC and place real outbound calls. Mute, hold/resume, DTMF, and hangup drive the Telnyx SDK.
 - **Agent state machine** — `AVAILABLE`, `ON_CALL`, `WRAP_UP`, and `AUX`, with a live timer for the current state.
 - **AUX pauses** — Lunch, Short Break, Bio Break, Coaching, and Training. Selecting any AUX reason pauses the dialer; returning to Available unlocks it.
-- **Call lifecycle** — ringing, connected timer, mute, hold/resume, and hangup. In Simulation mode the ring lasts 3 seconds; in Telnyx mode it follows the real call.
+- **Call lifecycle** — ringing, connected timer, mute, hold/resume, and hangup, driven by real Telnyx call events.
 - **Keyboard dialing** — type digits from anywhere on the console, letters map through T9 (so `1-800-FLOWERS` dials `18003569377`), `Enter` dials or hangs up, `Backspace` deletes, `Esc` clears, and `M` / `H` mute and hold during a call. Digits sent while connected display as DTMF tones.
 - **Wrap-up** — hanging up starts a 5-second wrap-up countdown before the agent returns to Available.
 - **Persistent call history** — number, start time, duration, and status (`Completed`, `Handled`, `No Answer`, `Failed`). Entries survive reloads, support click-to-dial, and can be cleared.
+- **In-memory session** — the SIP password and login live only in the current tab. A page refresh returns to sign-in.
 - **Responsive dark UI** — JetBrains Mono typography, CSS variables, accessible focus states, and reduced-motion support.
+
+## Sign-in
+
+The sign-in card asks for three values, in this order:
+
+| Field | Purpose |
+| --- | --- |
+| **SIP username** | Telnyx telephony credential username (for example `gencred…`). |
+| **Agent extension** | Display extension shown in the console header (for example `2041`). It is not sent to Telnyx. |
+| **SIP password** | Telnyx telephony credential password. |
+
+All three must be present. The username and extension can be pre-filled from `js/config.js`; the password field is always left blank.
+
+## Configuration
+
+`js/config.js` holds optional defaults:
+
+```js
+export const TELNYX_CONFIG = {
+  username: '',
+  extension: '',
+  password: '',
+};
+```
+
+- These are **Telnyx SIP credentials**, not a Telnyx API key. The browser WebRTC SDK cannot use an API key.
+- Leave the values blank to require every agent to type their own credentials. The committed file must contain empty strings — never put real credentials in it.
+- Because this file is served to the browser, any value in it is public. Prefer a server-side JWT/token flow for real production.
+- Do not add `js/config.js` to `.gitignore`; `index.html` and `js/app.js` load it in production.
 
 ## Routes
 
@@ -31,17 +57,9 @@ GitHub Pages is a static host, so this app uses hash routing. Every route works 
 | Login | `https://potaterrr.github.io/happyfone-webui/#/login-webui` |
 | Dashboard | `https://potaterrr.github.io/happyfone-webui/#/dashboard` |
 
-The bare project URL and `#/login-webui` always open the sign-in screen; signing in moves you to the dashboard. `#/dashboard` falls back to sign-in when there is no valid session.
+The bare project URL and `#/login-webui` always open the sign-in screen; signing in moves you to the dashboard. `#/dashboard` falls back to sign-in when there is no live session.
 
-## Simulation mode
-
-Authentication is intentionally mocked. Any non-empty username, extension, and password will sign you in. No credentials leave the browser and no real calls are placed.
-
-## Telnyx test mode
-
-Telnyx test mode connects the browser directly to a Telnyx **SIP Credential Connection** using the [Telnyx WebRTC JS SDK](https://developers.telnyx.com/docs/development/webrtc/js-sdk). It is intended for outbound testing only.
-
-### Telnyx portal checklist
+## Telnyx portal checklist
 
 1. Buy a number under **Numbers → Buy Numbers**.
 2. Create a **SIP Credential Connection** under **Call Connections → Create → SIP Credential Connection**.
@@ -50,19 +68,32 @@ Telnyx test mode connects the browser directly to a Telnyx **SIP Credential Conn
 5. Create an **Outbound Voice Profile** and assign it to the connection.
 6. Make sure the account has a positive balance and the destination country is allowed.
 
-### Testing
+## Local development
 
-1. Open the live URL in Chrome or Edge.
-2. Select **Telnyx test**.
-3. Enter the SIP username, an agent extension (display only), and the SIP password.
-4. Wait for **"Connected to Telnyx. Ready for test calls."**
-5. Dial an E.164 number and verify ringing, two-way audio, mute, hold/resume, DTMF, and hangup.
+Because the app uses ES modules, serve the folder over HTTP rather than opening `index.html` directly:
 
-### Security notes
+```bash
+cd happyfone-webui
+python3 -m http.server 8080
+# open http://localhost:8080/
+```
 
-- **Test only.** The SIP password is held in memory for the tab and is never written to `localStorage`, `sessionStorage`, or the repository. Refreshing the page requires signing in again.
+Then sign in with a Telnyx SIP username, an agent extension, and the SIP password.
+
+## Static deployment
+
+The site is plain static files. Upload the contents of the ZIP (or this repository root, excluding `.git`) into any web root. No build step is needed.
+
+For nginx, a minimal server block is provided in `deploy/nginx.conf`. See `DEPLOY.md` for the short version.
+
+**HTTPS is required for microphone access.** Browsers only grant `getUserMedia` on secure origins, so use HTTPS in production (or `http://localhost` for local testing). Put Cloudflare, Caddy, or a TLS-terminating proxy in front of nginx if you do not manage certificates directly.
+
+## Security notes
+
+- **Browser SIP credentials are public.** Any credential typed into a static web app is visible to the user and can be replayed. Treat this direct-browser mode as suitable for trusted agents only.
+- **Prefer a server/JWT token flow for real production.** Keep SIP credentials on the server: the sign-in form posts to an auth service, the service returns an ephemeral JWT, and the browser connects to a media gateway that routes to Telnyx. That removes SIP passwords from the browser entirely.
+- Credentials are held in memory for the tab only and are never written to `localStorage`, `sessionStorage`, or the repository.
 - Use one browser tab per SIP credential. Sharing a credential causes registration conflicts.
-- Do not use this direct-browser path in production. The production design keeps SIP credentials on the server: the login form posts to an auth service, the service returns an ephemeral JWT, and the browser connects to a Kamailio/RTPEngine gateway that routes to the Telnyx SIP trunk.
 - Inbound calls are not handled. They need Telnyx webhooks and a backend to route the call to the browser.
 
 ## Keyboard controls
@@ -79,36 +110,30 @@ The dialer listens for keys whenever the console is open. It ignores input field
 
 On-screen keys flash when their keyboard equivalent is pressed, and touch devices hide the keyboard legend.
 
-## Local development
-
-Because the app uses ES modules, serve the folder over HTTP rather than opening `index.html` directly:
-
-```bash
-cd happyfone-webui
-python3 -m http.server 8080
-# open http://localhost:8080/
-```
-
 ## File structure
 
 ```
 index.html          Markup for both views
 css/styles.css      Theme, layout, components, responsive rules
-js/app.js           Hash router, auth/session, mode switching, boot
+js/app.js           Hash router, Telnyx session guard, boot
+js/config.js        Optional Telnyx SIP defaults (blank by default)
 js/dialer.js        Keypad, call lifecycle, history storage
-js/telephony.js     Telnyx WebRTC test-mode adapter
+js/telephony.js     Telnyx WebRTC adapter
 js/aux.js           AUX state machine, reasons, time helpers
+DEPLOY.md           Minimal static deployment guide
+deploy/nginx.conf   Starter nginx server block
 ```
 
 ## Implementation notes
 
 - Call durations are computed from timestamps, so timers stay accurate if the tab is throttled.
 - Calls that use Hold are logged as `Handled`; connected calls without hold are `Completed`; calls ended while ringing are `No Answer`; SDK failures are `Failed`.
-- Logout disconnects the Telnyx client, cancels any active call, clears the `happyfone.*` storage keys, and returns to sign-in.
-- Simulation mode only requests the Google Fonts stylesheet. Telnyx test mode additionally loads the pinned `@telnyx/webrtc` SDK from jsDelivr on first connect.
+- Logout disconnects the Telnyx client, cancels any active call, clears call history, and returns to sign-in.
+- The pinned `@telnyx/webrtc` SDK is loaded from jsDelivr on first connect.
+- The session is intentionally memory-only: refreshing the page signs the agent out and requires the SIP password again.
 
 ## Deployment
 
-This repository is the standalone source of truth for the HappyFone WebUI. Pushes to `main` deploy the repository root through GitHub Pages using `.github/workflows/pages.yml`.
+This repository is the standalone source of truth for the HappyPhone WebUI. Pushes to `main` deploy the repository root through GitHub Pages.
 
 The public project card lives in the `potaterrr.github.io` repository under `/projects/happyfone-webui/` and links to this deployment.
