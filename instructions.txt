@@ -1,5 +1,6 @@
 HAPPYPHONE WEBUI - DEPLOYMENT INSTRUCTIONS FOR DAVE
-Target: https://happyphone.lol/caller/
+Targets: https://happyphone.lol/caller/console/ (primary)
+         https://happyphone.lol/caller/ (also supported)
 Package: happyphone-webui.zip
 ============================================================
 
@@ -12,12 +13,14 @@ copy anything to the server.
 QUICK CHECKLIST
 ---------------
 [ ] Confirm whether to REPLACE the current /caller app or deploy elsewhere.
+[ ] Confirm the target path: /caller/console or /caller.
 [ ] Back up /var/www/happyphone.lol/caller BEFORE overwriting anything.
 [ ] Confirm what currently serves /caller (static nginx, Node/Next,
     Cloudflare, or a reverse proxy).
 [ ] Upload and unzip the package into /var/www/happyphone.lol/caller.
 [ ] Make sure JS and CSS are served as real static files with the
     correct Content-Type - not index.html.
+[ ] Confirm whether a password-change backend endpoint is available.
 [ ] Reload nginx and verify with curl + a browser sign-in.
 [ ] Delete instructions.txt from the web root after deployment.
 
@@ -71,9 +74,10 @@ The site uses hash routing:
 
     #/login-webui
     #/dashboard
+    #/password-change
 
 Hash routes work on refresh and direct access without a server-side
-rewrite.
+rewrite. Pretty URLs for the password page are redirected in section 5:
 
 4. STATIC FILE SERVING - IMPORTANT
 ----------------------------------
@@ -101,7 +105,11 @@ Target filesystem path for a static nginx setup:
 
     /var/www/happyphone.lol/caller
 
-nginx location block:
+If the console lives at /caller/console/, the target is:
+
+    /var/www/happyphone.lol/caller/console
+
+nginx location block for /caller/:
 
     location = /caller { return 301 /caller/; }
     location /caller/ {
@@ -109,6 +117,32 @@ nginx location block:
         index index.html;
         try_files $uri $uri/ /caller/index.html;
     }
+    location = /caller/console/password-change {
+        return 302 /caller/console/#/password-change;
+    }
+
+nginx location block for /caller/console/:
+
+    location = /caller/console { return 301 /caller/console/; }
+    location /caller/console/ {
+        root /var/www/happyphone.lol;
+        index index.html;
+        try_files $uri $uri/ /caller/console/index.html;
+    }
+    location = /caller/console/password-change {
+        return 302 /caller/console/#/password-change;
+    }
+
+For a deployment at /caller/, use:
+
+    location = /caller/password-change {
+        return 302 /caller/#/password-change;
+    }
+
+The inline bootstrap alias in index.html also rewrites
+/caller/console/password-change and /caller/password-change (with
+or without a trailing slash) when the server falls back to
+index.html for those paths.
 
 The try_files fallback is only a safety net for the hash-routed app.
 Real files such as /caller/js/app.js must still be found on disk
@@ -130,6 +164,9 @@ If the target directory is empty on a first deploy, the cp backup
 command may report "No such file or directory". That is fine, but
 confirm the path first.
 
+For the /caller/console/ target, replace /caller in the mkdir,
+backup, unzip, and chown commands with /caller/console.
+
 Add or adapt the nginx location block from section 5 in the server
 block that handles happyphone.lol, then test and reload.
 
@@ -140,6 +177,7 @@ The package ships js/config.js with blank values:
     username:  ''
     extension: ''
     password:  ''
+    passwordChangeEndpoint: '/caller/console/api/password'
 
 Dave can either:
 
@@ -158,7 +196,91 @@ never reach the browser.
 
 Do not commit credentials to Git.
 
-8. MICROPHONE AND HTTPS
+8. ONE PHONE NUMBER, MANY AGENTS
+--------------------------------
+Model B: one Telnyx SIP Credential Connection and one phone number,
+with a separate Telephony Credential for each agent or device.
+
+Multiple telephony credentials can share one connection and one
+phone number. What that means:
+
+  - All agents on the connection share the outbound caller ID.
+  - The caller ID belongs to the connection/number, not the credential.
+  - A telephony credential is a SIP identity, not a phone number.
+  - Inbound routing is connection-level, not per-agent.
+  - Telnyx recommends one telephony credential per device.
+  - Do not share one credential across tabs or devices; registration
+    conflicts will break calls.
+
+9. PASSWORD CHANGE PAGE AND BACKEND
+-----------------------------------
+The console includes a password page at:
+
+    #/password-change
+
+It shows the signed-in SIP username and extension and posts JSON:
+
+    {
+      "username": "sip-username",
+      "extension": "2041",
+      "currentPassword": "current-password",
+      "newPassword": "new-password"
+    }
+
+to TELNYX_CONFIG.passwordChangeEndpoint. The default is:
+
+    /caller/console/api/password
+
+If the config value is blank, the app falls back to the app-relative
+path api/password.
+
+The page is included and ready, but actual password changes require
+Dave's backend endpoint. If the endpoint returns 404, 405, 501, or
+cannot be reached, the page says password change is not enabled and
+does not claim success.
+
+For a deployment at /caller/, set passwordChangeEndpoint to
+/caller/api/password, or leave it blank so the app uses the
+app-relative api/password path.
+
+Endpoint responses expected by the page:
+
+  200/201 { "ok": true }
+      -> sign out, clear the in-memory session, return to sign-in.
+
+  200/201 { "ok": true, "username": "...", "password": "..." }
+      -> show the new SIP credentials once with a copy button,
+         then require re-login.
+
+  400/401/403
+      -> show the server's error or message.
+
+  404/405/501 or network failure
+      -> "Password change is not enabled on this server yet.
+          Ask Dave to connect the password-change endpoint."
+
+IMPORTANT TELNYX LIMITATION
+The Telnyx Telephony Credential PATCH endpoint only updates name,
+tag, connection_id, and expires_at. It CANNOT change sip_password
+or sip_username. The page does not pretend it can PATCH a Telnyx
+password.
+
+Backend options:
+
+  A. App-level extension passwords + short-lived JWTs (recommended).
+     The backend owns agent passwords, verifies the current password,
+     writes the new one, and mints a short-lived Telnyx JWT for
+     sign-in. Password changes work without touching Telnyx.
+
+  B. Delete and recreate the Telnyx telephony credential.
+     This issues a new SIP username and password, so it is
+     disruptive and must be coordinated with the agent. It is the
+     only way to change a Telnyx SIP password directly.
+
+The client never stores the current or new password in
+localStorage or sessionStorage.
+
+10. MICROPHONE AND HTTPS
 -----------------------
 Microphone access requires HTTPS, except on localhost.
 
@@ -172,13 +294,22 @@ deploy/nginx.conf includes:
 Make sure HTTPS is active for happyphone.lol before testing calls.
 Cloudflare, Caddy, or certbot can terminate TLS in front of nginx.
 
-9. URLS AFTER DEPLOY
+11. URLS AFTER DEPLOY
 --------------------
     https://happyphone.lol/caller/
     https://happyphone.lol/caller/#/login-webui
     https://happyphone.lol/caller/#/dashboard
+    https://happyphone.lol/caller/#/password-change
 
-10. VERIFY THE DEPLOY
+If mounted at /caller/console/, use:
+
+    https://happyphone.lol/caller/console/
+    https://happyphone.lol/caller/console/#/login-webui
+    https://happyphone.lol/caller/console/#/dashboard
+    https://happyphone.lol/caller/console/#/password-change
+    https://happyphone.lol/caller/console/password-change
+
+12. VERIFY THE DEPLOY
 ---------------------
 Check the page and the JavaScript file:
 
@@ -203,8 +334,10 @@ Then open https://happyphone.lol/caller/ in a browser:
     2. Sign in with Telnyx SIP credentials.
     3. Confirm the dashboard loads.
     4. Place an outbound call and test mute, hold, DTMF, and hangup.
+    5. Open "Password" and confirm the page renders. A real change
+       requires the backend endpoint in section 9.
 
-11. ROLLBACK
+13. ROLLBACK
 ------------
 If anything fails, restore the backup directory and reload nginx.
 
@@ -216,7 +349,7 @@ If anything fails, restore the backup directory and reload nginx.
 Only run the rm command after confirming the backup exists and the
 backup path is correct.
 
-12. QUESTIONS FOR DAVE / OWNER
+14. QUESTIONS FOR DAVE / OWNER
 ------------------------------
 Please confirm before touching production:
 
@@ -239,7 +372,12 @@ Please confirm before touching production:
    Should js/config.js be edited on the server, or should agents
    enter their SIP username, extension, and password at sign-in?
 
-13. NOTES
+6. Is there a password-change backend endpoint?
+   The page is ready, but it needs an endpoint matching section 9.
+   Which backend option is planned: app-level passwords + JWT, or
+   delete/recreate the Telnyx credential?
+
+15. NOTES
 ---------
 instructions.txt is documentation only. It is not needed at runtime
 and can be deleted from the web root after deployment.

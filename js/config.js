@@ -14,4 +14,10 @@ export const TELNYX_CONFIG = {
   username: '',
   extension: '',
   password: '',
+  /**
+   * Server endpoint for #/password-change. It receives a JSON POST:
+   * { username, extension, currentPassword, newPassword }.
+   * Leave blank to use the app-relative `api/password` path.
+   */
+  passwordChangeEndpoint: '/caller/console/api/password',
 };

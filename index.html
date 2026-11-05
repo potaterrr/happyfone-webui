@@ -8,6 +8,18 @@
   <meta name="theme-color" content="#070b14" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#f4f6fb" media="(prefers-color-scheme: light)">
   <meta name="color-scheme" content="light dark">
+  <script>
+    /* Bootstrap alias for pretty password URLs such as
+       /caller/console/password-change and /caller/password-change.
+       Runs before relative CSS/JS requests so a trailing slash still
+       resolves assets from the app base, then hands off to hash routing. */
+    (function () {
+      if (window.location.hash) return;
+      var match = window.location.pathname.match(/^(.*)\/password-change\/?$/);
+      if (!match) return;
+      window.history.replaceState(null, '', match[1] + '/#/password-change');
+    }());
+  </script>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%235b8cff'/%3E%3Cpath d='M11 8.5c.5 0 1 .3 1.3.8l1.5 2.4c.4.6.3 1.4-.2 1.9l-1.1 1.1a12 12 0 0 0 4.3 4.3l1.1-1.1c.5-.5 1.3-.6 1.9-.2l2.4 1.5c.5.3.8.8.8 1.3v2.1c0 .9-.8 1.7-1.7 1.6C13.9 23.6 8.4 18.1 7.7 10.2c-.1-.9.7-1.7 1.6-1.7H11Z' fill='%2307121f'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -155,6 +167,11 @@
         </span>
       </div>
 
+      <a class="btn btn-quiet btn-password" id="password-btn" href="#/password-change">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="3.5"/><path d="m10 13 8.5-8.5M15 7l3 3M18 4l2 2"/></svg>
+        <span>Password</span>
+      </a>
+
       <button class="btn btn-quiet btn-logout" id="logout-btn" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
         <span>Logout</span>
@@ -275,6 +292,96 @@
       <span>HappyPhone WebUI · v1.0</span>
       <span id="app-foot-mode">Telnyx WebRTC · outbound calls</span>
     </footer>
+  </section>
+
+  <section class="view view-password" id="view-password" hidden>
+    <header class="topbar password-topbar">
+      <div class="topbar-brand">
+        <span class="brand-mark brand-mark-sm" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24 11.4 11.4 0 0 0 3.57.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.4 11.4 0 0 0 .57 3.57 1 1 0 0 1-.25 1.02l-2.2 2.2Z"/></svg>
+        </span>
+        <span class="brand-word">Happy<span>Phone</span></span>
+      </div>
+
+      <div class="password-topbar-actions">
+        <a class="btn btn-quiet btn-back" id="password-back" href="#/dashboard">Back to console</a>
+        <button class="btn btn-quiet btn-logout" id="password-logout-btn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          <span>Logout</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="password-main">
+      <section class="panel password-panel" aria-labelledby="password-title">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Agent account</p>
+            <h2 id="password-title">Change password</h2>
+          </div>
+        </div>
+
+        <form class="password-form" id="password-form" novalidate>
+          <div class="password-identity">
+            <div class="password-identity-item">
+              <span>SIP username</span>
+              <b id="password-username">—</b>
+            </div>
+            <div class="password-identity-item">
+              <span>Agent extension</span>
+              <b id="password-extension">—</b>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="password-current">Current password</label>
+            <div class="password-wrap">
+              <input id="password-current" name="currentPassword" type="password" autocomplete="current-password" placeholder="••••••••" required>
+              <button class="password-toggle" id="password-current-toggle" type="button" aria-label="Show current password" aria-pressed="false">Show</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="password-new">New password</label>
+            <div class="password-wrap">
+              <input id="password-new" name="newPassword" type="password" autocomplete="new-password" placeholder="At least 8 characters" minlength="8" required>
+              <button class="password-toggle" id="password-new-toggle" type="button" aria-label="Show new password" aria-pressed="false">Show</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="password-confirm">Confirm new password</label>
+            <div class="password-wrap">
+              <input id="password-confirm" name="confirmPassword" type="password" autocomplete="new-password" placeholder="Repeat new password" minlength="8" required>
+              <button class="password-toggle" id="password-confirm-toggle" type="button" aria-label="Show confirmation" aria-pressed="false">Show</button>
+            </div>
+          </div>
+
+          <p class="password-hint">New password must be at least 8 characters.</p>
+          <p class="form-error" id="password-error" role="alert" hidden></p>
+          <p class="form-success" id="password-success" role="status" aria-live="polite" hidden></p>
+
+          <div class="password-result" id="password-result" hidden>
+            <p class="password-result-title">New SIP credentials — shown once</p>
+            <div class="credential-row">
+              <span>SIP username</span>
+              <code id="password-new-username"></code>
+            </div>
+            <div class="credential-row">
+              <span>SIP password</span>
+              <code id="password-new-password"></code>
+            </div>
+            <button class="btn btn-quiet btn-small" id="password-copy" type="button">Copy credentials</button>
+          </div>
+
+          <button class="btn btn-primary password-submit" id="password-submit" type="submit">
+            <span id="password-submit-label">Update password</span>
+          </button>
+        </form>
+
+        <p class="password-note">This page calls the configured server endpoint. It cannot PATCH a Telnyx SIP password directly; if the endpoint is not connected, nothing changes.</p>
+      </section>
+    </main>
   </section>
 
   <noscript>

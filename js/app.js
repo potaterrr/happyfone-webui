@@ -2,8 +2,9 @@
  * app.js — hash router, Telnyx session guard, header rendering, and app wiring.
  *
  * GitHub Pages is static, so routing uses hashes:
- *   #/login-webui  → sign-in
- *   #/dashboard    → agent console
+ *   #/login-webui    → sign-in
+ *   #/dashboard      → agent console
+ *   #/password-change → change SIP/agent password
  */
 
 import {
@@ -20,11 +21,13 @@ import { TELNYX_CONFIG } from './config.js';
 const ROUTES = Object.freeze({
   LOGIN: 'login',
   DASHBOARD: 'dashboard',
+  PASSWORD: 'password',
 });
 
 const HASH = Object.freeze({
   LOGIN: '#/login-webui',
   DASHBOARD: '#/dashboard',
+  PASSWORD: '#/password-change',
 });
 
 const $ = (selector) => document.querySelector(selector);
@@ -32,6 +35,7 @@ const $ = (selector) => document.querySelector(selector);
 const el = {
   loginView: $('#view-login'),
   dashboardView: $('#view-dashboard'),
+  passwordView: $('#view-password'),
   loginForm: $('#login-form'),
   username: $('#login-username'),
   extension: $('#login-extension'),
@@ -43,6 +47,24 @@ const el = {
   micCheck: $('#mic-check'),
   micStatus: $('#mic-status'),
   micBtn: $('#mic-btn'),
+  passwordForm: $('#password-form'),
+  passwordUsername: $('#password-username'),
+  passwordExtension: $('#password-extension'),
+  passwordCurrent: $('#password-current'),
+  passwordNew: $('#password-new'),
+  passwordConfirm: $('#password-confirm'),
+  passwordCurrentToggle: $('#password-current-toggle'),
+  passwordNewToggle: $('#password-new-toggle'),
+  passwordConfirmToggle: $('#password-confirm-toggle'),
+  passwordError: $('#password-error'),
+  passwordSuccess: $('#password-success'),
+  passwordResult: $('#password-result'),
+  passwordNewUsername: $('#password-new-username'),
+  passwordNewPassword: $('#password-new-password'),
+  passwordCopy: $('#password-copy'),
+  passwordSubmit: $('#password-submit'),
+  passwordSubmitLabel: $('#password-submit-label'),
+  passwordLogoutBtn: $('#password-logout-btn'),
   telephonyBadge: $('#telephony-badge'),
   appFootMode: $('#app-foot-mode'),
   dialerFineprint: $('#dialer-fineprint'),
@@ -90,6 +112,11 @@ let currentRoute = null;
 let telephony = null;
 let liveSession = null;
 let micGranted = false;
+let passwordCompleted = false;
+let passwordRedirectTimer = null;
+
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_ENDPOINT_DISABLED = 'Password change is not enabled on this server yet. Ask Dave to connect the password-change endpoint.';
 
 const MIC_STATUS = Object.freeze({
   idle: 'Not checked yet.',
@@ -180,6 +207,7 @@ function parseRoute() {
   const raw = (window.location.hash || '').replace(/^#\/?/, '').toLowerCase();
   if (raw === 'login-webui' || raw === 'login') return ROUTES.LOGIN;
   if (raw === 'dashboard') return ROUTES.DASHBOARD;
+  if (raw === 'password-change' || raw === 'password') return ROUTES.PASSWORD;
   return null;
 }
 
@@ -188,32 +216,45 @@ function resolveRoute() {
   let route = parseRoute();
 
   /* The sign-in screen always comes first: an empty hash lands on login and
-     an explicit #/login-webui never bounces to the dashboard. Only
-     #/dashboard requires a live in-memory Telnyx session. */
+     an explicit #/login-webui never bounces to the dashboard. Dashboard and
+     password-change both require a live in-memory Telnyx session. */
   if (!route) route = ROUTES.LOGIN;
-  if (!session && route === ROUTES.DASHBOARD) route = ROUTES.LOGIN;
+  if (!session && (route === ROUTES.DASHBOARD || route === ROUTES.PASSWORD)) {
+    route = ROUTES.LOGIN;
+  }
 
   return { route, session };
 }
 
 function showView(route) {
+  const isLogin = route === ROUTES.LOGIN;
   const isDashboard = route === ROUTES.DASHBOARD;
-  el.loginView.hidden = isDashboard;
+  const isPassword = route === ROUTES.PASSWORD;
+
+  el.loginView.hidden = !isLogin;
   el.dashboardView.hidden = !isDashboard;
+  el.passwordView.hidden = !isPassword;
   currentRoute = route;
   document.title = isDashboard
     ? 'Agent Console · HappyPhone WebUI'
-    : 'Sign in · HappyPhone WebUI';
+    : isPassword
+      ? 'Change password · HappyPhone WebUI'
+      : 'Sign in · HappyPhone WebUI';
 }
 
 function renderRoute() {
   const { route, session } = resolveRoute();
-  const canonical = route === ROUTES.DASHBOARD ? HASH.DASHBOARD : HASH.LOGIN;
+  const canonical = route === ROUTES.DASHBOARD
+    ? HASH.DASHBOARD
+    : route === ROUTES.PASSWORD
+      ? HASH.PASSWORD
+      : HASH.LOGIN;
 
   if (window.location.hash !== canonical) {
     window.history.replaceState(null, '', canonical);
   }
 
+  const enteringPassword = route === ROUTES.PASSWORD && currentRoute !== ROUTES.PASSWORD;
   showView(route);
 
   if (route === ROUTES.DASHBOARD && session) {
@@ -222,13 +263,24 @@ function renderRoute() {
     dialer?.syncAvailability();
   }
 
+  if (route === ROUTES.PASSWORD && session) {
+    applyPasswordIdentity(session);
+    if (enteringPassword) resetPasswordForm();
+  }
+
+  if (route !== ROUTES.PASSWORD) clearPasswordRedirectTimer();
+
   if (route === ROUTES.LOGIN) {
     el.loginError.hidden = true;
   }
 }
 
 function navigate(route, { replace = false } = {}) {
-  const target = route === ROUTES.DASHBOARD ? HASH.DASHBOARD : HASH.LOGIN;
+  const target = route === ROUTES.DASHBOARD
+    ? HASH.DASHBOARD
+    : route === ROUTES.PASSWORD
+      ? HASH.PASSWORD
+      : HASH.LOGIN;
   if (window.location.hash === target) {
     renderRoute();
     return;
@@ -246,6 +298,272 @@ function setLoginError(message) {
 
 function clearInvalidMarks() {
   [el.username, el.extension, el.password].forEach((input) => input.removeAttribute('aria-invalid'));
+}
+
+/* ------------------------------------------------------------- password change */
+function passwordEndpoint() {
+  const configured = (TELNYX_CONFIG.passwordChangeEndpoint || '').trim();
+  if (configured) return configured;
+
+  /* Blank-safe fallback: resolve relative to the deployed app directory so
+     the page works at /caller/console/ and /caller/ without editing config. */
+  return new URL('api/password', document.baseURI).pathname;
+}
+
+function setPasswordError(message) {
+  el.passwordError.textContent = message;
+  el.passwordError.hidden = false;
+  el.passwordSuccess.hidden = true;
+}
+
+function clearPasswordMessages() {
+  el.passwordError.hidden = true;
+  el.passwordError.textContent = '';
+  el.passwordSuccess.hidden = true;
+  el.passwordSuccess.textContent = '';
+}
+
+function clearPasswordRedirectTimer() {
+  if (passwordRedirectTimer) window.clearTimeout(passwordRedirectTimer);
+  passwordRedirectTimer = null;
+}
+
+function resetPasswordToggle(button, input) {
+  input.type = 'password';
+  button.textContent = 'Show';
+  button.setAttribute('aria-pressed', 'false');
+  button.setAttribute('aria-label', button.dataset.showLabel || 'Show password');
+}
+
+function bindPasswordToggle(button, input) {
+  if (!button.dataset.showLabel) {
+    button.dataset.showLabel = button.getAttribute('aria-label') || 'Show password';
+  }
+
+  button.addEventListener('click', () => {
+    const showing = input.type === 'text';
+    input.type = showing ? 'password' : 'text';
+    button.textContent = showing ? 'Show' : 'Hide';
+    button.setAttribute('aria-pressed', String(!showing));
+    button.setAttribute('aria-label', showing ? button.dataset.showLabel : 'Hide password');
+    input.focus({ preventScroll: true });
+  });
+}
+
+function applyPasswordIdentity(session) {
+  el.passwordUsername.textContent = session.username;
+  el.passwordExtension.textContent = `Ext. ${session.extension}`;
+}
+
+function setPasswordFieldsDisabled(disabled) {
+  [el.passwordCurrent, el.passwordNew, el.passwordConfirm].forEach((input) => {
+    input.disabled = disabled;
+  });
+  [el.passwordCurrentToggle, el.passwordNewToggle, el.passwordConfirmToggle].forEach((button) => {
+    button.disabled = disabled;
+  });
+}
+
+function resetPasswordForm() {
+  passwordCompleted = false;
+  el.passwordForm.reset();
+  [el.passwordCurrent, el.passwordNew, el.passwordConfirm].forEach((input) => {
+    input.removeAttribute('aria-invalid');
+    input.disabled = false;
+  });
+  resetPasswordToggle(el.passwordCurrentToggle, el.passwordCurrent);
+  resetPasswordToggle(el.passwordNewToggle, el.passwordNew);
+  resetPasswordToggle(el.passwordConfirmToggle, el.passwordConfirm);
+  [el.passwordCurrentToggle, el.passwordNewToggle, el.passwordConfirmToggle].forEach((button) => {
+    button.disabled = false;
+  });
+  clearPasswordMessages();
+  clearPasswordRedirectTimer();
+  el.passwordResult.hidden = true;
+  el.passwordNewUsername.textContent = '';
+  el.passwordNewPassword.textContent = '';
+  el.passwordSubmit.disabled = false;
+  el.passwordSubmitLabel.textContent = 'Update password';
+}
+
+function finishPasswordChange() {
+  clearPasswordRedirectTimer();
+  resetPasswordForm();
+  navigate(ROUTES.LOGIN, { replace: true });
+  toast('Password changed. Sign in with your new credentials.');
+}
+
+async function disconnectTelephony() {
+  dialer?.abortActiveCall();
+
+  if (telephony) {
+    try {
+      await telephony.disconnect();
+    } catch {
+      /* Already disconnected. */
+    }
+    telephony = null;
+  }
+  dialer?.setTelephony(null);
+}
+
+async function handlePasswordSuccess(data) {
+  passwordCompleted = true;
+  setPasswordFieldsDisabled(true);
+  clearPasswordMessages();
+
+  const newUsername = typeof data.username === 'string' ? data.username : '';
+  const newPassword = typeof data.password === 'string' ? data.password : '';
+
+  el.passwordSuccess.hidden = false;
+
+  if (newUsername && newPassword) {
+    el.passwordNewUsername.textContent = newUsername;
+    el.passwordNewPassword.textContent = newPassword;
+    el.passwordResult.hidden = false;
+    el.passwordSuccess.textContent = 'Password changed. Copy the new SIP credentials below — they are shown only once.';
+    el.passwordSubmit.disabled = false;
+    el.passwordSubmitLabel.textContent = 'Continue to sign in';
+  } else {
+    el.passwordSuccess.textContent = 'Password changed. Signing you out…';
+    el.passwordSubmit.disabled = true;
+    el.passwordSubmitLabel.textContent = 'Password changed';
+    passwordRedirectTimer = window.setTimeout(finishPasswordChange, 3000);
+  }
+
+  await disconnectTelephony();
+  machine.reset();
+  clearSession();
+  updateTelephonyChrome(false);
+  toast('Password changed.');
+}
+
+async function submitPasswordChange() {
+  if (passwordCompleted) {
+    finishPasswordChange();
+    return;
+  }
+
+  clearPasswordMessages();
+  [el.passwordCurrent, el.passwordNew, el.passwordConfirm].forEach((input) => {
+    input.removeAttribute('aria-invalid');
+  });
+
+  const currentPassword = el.passwordCurrent.value;
+  const newPassword = el.passwordNew.value;
+  const confirmation = el.passwordConfirm.value;
+
+  const missing = [];
+  if (!currentPassword) missing.push(el.passwordCurrent);
+  if (!newPassword) missing.push(el.passwordNew);
+  if (!confirmation) missing.push(el.passwordConfirm);
+
+  if (missing.length > 0) {
+    missing.forEach((input) => input.setAttribute('aria-invalid', 'true'));
+    setPasswordError('Enter your current password, a new password, and the confirmation.');
+    missing[0].focus({ preventScroll: true });
+    return;
+  }
+
+  if (newPassword.length < PASSWORD_MIN_LENGTH) {
+    el.passwordNew.setAttribute('aria-invalid', 'true');
+    setPasswordError(`New password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
+    el.passwordNew.focus({ preventScroll: true });
+    return;
+  }
+
+  if (newPassword !== confirmation) {
+    el.passwordConfirm.setAttribute('aria-invalid', 'true');
+    setPasswordError('New password and confirmation do not match.');
+    el.passwordConfirm.focus({ preventScroll: true });
+    return;
+  }
+
+  el.passwordSubmit.disabled = true;
+  el.passwordSubmitLabel.textContent = 'Updating…';
+
+  let response;
+  try {
+    response = await fetch(passwordEndpoint(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        username: liveSession?.username || '',
+        extension: liveSession?.extension || '',
+        currentPassword,
+        newPassword,
+      }),
+    });
+  } catch {
+    setPasswordError(PASSWORD_ENDPOINT_DISABLED);
+    el.passwordSubmit.disabled = false;
+    el.passwordSubmitLabel.textContent = 'Update password';
+    return;
+  }
+
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    /* Some servers reply with an empty body or plain text. */
+  }
+
+  const successful = (response.status === 200 || response.status === 201) && data?.ok === true;
+
+  if (successful) {
+    await handlePasswordSuccess(data);
+    return;
+  }
+
+  if ([404, 405, 501].includes(response.status)) {
+    setPasswordError(PASSWORD_ENDPOINT_DISABLED);
+  } else if ([400, 401, 403].includes(response.status)) {
+    setPasswordError(
+      data?.error
+      || data?.message
+      || `The server rejected the password change (HTTP ${response.status}).`,
+    );
+  } else if (data?.error || data?.message) {
+    setPasswordError(String(data.error || data.message));
+  } else {
+    setPasswordError(`Password change failed (HTTP ${response.status}). Try again.`);
+  }
+
+  el.passwordSubmit.disabled = false;
+  el.passwordSubmitLabel.textContent = 'Update password';
+}
+
+function bindPasswordChange() {
+  bindPasswordToggle(el.passwordCurrentToggle, el.passwordCurrent);
+  bindPasswordToggle(el.passwordNewToggle, el.passwordNew);
+  bindPasswordToggle(el.passwordConfirmToggle, el.passwordConfirm);
+
+  [el.passwordCurrent, el.passwordNew, el.passwordConfirm].forEach((input) => {
+    input.addEventListener('input', () => {
+      input.removeAttribute('aria-invalid');
+      el.passwordError.hidden = true;
+    });
+  });
+
+  el.passwordForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void submitPasswordChange();
+  });
+
+  el.passwordCopy.addEventListener('click', async () => {
+    const text = `SIP username: ${el.passwordNewUsername.textContent}\nSIP password: ${el.passwordNewPassword.textContent}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('New credentials copied.');
+    } catch {
+      toast('Copy failed. Select the credentials and copy them manually.', 'warn');
+    }
+  });
+
+  el.passwordLogoutBtn.addEventListener('click', logout);
 }
 
 /* ------------------------------------------------------------- microphone */
@@ -419,17 +737,7 @@ function bindLogin() {
 }
 
 async function logout() {
-  dialer?.abortActiveCall();
-
-  if (telephony) {
-    try {
-      await telephony.disconnect();
-    } catch {
-      /* Already disconnected. */
-    }
-    telephony = null;
-  }
-  dialer?.setTelephony(null);
+  await disconnectTelephony();
 
   dialer?.clearHistory();
   machine.reset();
@@ -479,7 +787,17 @@ function tick() {
   dialer.tick();
 }
 
+/** Fallback alias if the inline head bootstrap did not run first. */
+function normalizePasswordPath() {
+  if (window.location.hash) return;
+  const match = window.location.pathname.match(/^(.*)\/password-change\/?$/);
+  if (!match) return;
+  window.history.replaceState(null, '', `${match[1]}/#/password-change`);
+}
+
 function init() {
+  normalizePasswordPath();
+
   dialer = new Dialer({ machine, elements: dialerEl, notify: toast });
   bindAuxSelect(el.auxSelect, machine, { notify: toast });
   machine.subscribe(renderStatus);
@@ -487,6 +805,8 @@ function init() {
   applyConfigDefaults();
   updateTelephonyChrome(false);
   bindLogin();
+  bindPasswordChange();
+  resetPasswordForm();
   void syncMicPermission();
   el.logoutBtn.addEventListener('click', logout);
   window.addEventListener('hashchange', renderRoute);

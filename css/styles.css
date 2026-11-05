@@ -418,6 +418,7 @@ a { color: inherit; }
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.03em;
+  text-decoration: none;
   cursor: pointer;
   transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
   -webkit-tap-highlight-color: transparent;
@@ -637,6 +638,99 @@ a { color: inherit; }
 .btn-small { min-height: 30px; padding: 0 10px; font-size: 9px; }
 .btn-logout { flex: 0 0 auto; }
 .btn-logout svg { width: 14px; height: 14px; }
+.btn-password { flex: 0 0 auto; }
+.btn-password svg { width: 14px; height: 14px; }
+
+/* --------------------------------------------------------- password change */
+.view-password { min-height: 100dvh; display: flex; flex-direction: column; }
+.password-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.password-main {
+  flex: 1;
+  width: min(720px, 100%);
+  margin: 0 auto;
+  padding: clamp(18px, 4vw, 40px) clamp(14px, 3vw, 32px);
+}
+.password-panel { width: 100%; }
+.password-form { padding: 18px 20px 22px; }
+.password-identity {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(9, 15, 28, 0.45);
+}
+.password-identity-item { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.password-identity-item span {
+  color: var(--faint);
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.password-identity-item b {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.password-hint { margin: 9px 0 0; color: var(--faint); font-size: 8px; line-height: 1.5; }
+.password-submit { height: 48px; }
+.form-success {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  border-radius: 10px;
+  background: rgba(52, 211, 153, 0.08);
+  color: #a7f3d0;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+.password-result {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(34, 211, 238, 0.3);
+  border-radius: 10px;
+  background: rgba(34, 211, 238, 0.07);
+}
+.password-result-title {
+  margin: 0 0 8px;
+  color: var(--accent-2);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.credential-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+  font-size: 9.5px;
+  line-height: 1.45;
+}
+.credential-row span { flex: 0 0 auto; color: var(--faint); }
+.credential-row code {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: var(--font);
+  text-align: right;
+}
+.password-result .btn { margin-top: 10px; }
+.password-note {
+  margin: 0 20px 20px;
+  color: var(--faint);
+  font-size: 8px;
+  line-height: 1.6;
+}
 
 /* --------------------------------------------------------- dashboard */
 .dashboard {
@@ -1179,6 +1273,8 @@ a { color: inherit; }
   .aux-picker { margin-left: auto; }
   .btn-logout span { display: none; }
   .btn-logout { min-width: 38px; padding: 0; }
+  .btn-password span { display: none; }
+  .btn-password { min-width: 38px; padding: 0; }
   .dashboard { padding: 14px; }
   .app-foot { flex-direction: column; gap: 4px; align-items: flex-start; padding-bottom: 16px; }
 }
@@ -1203,6 +1299,9 @@ a { color: inherit; }
   .history-foot { padding: 10px 16px; }
   .toast-root { left: 12px; right: 12px; align-items: stretch; }
   .toast { max-width: none; text-align: center; }
+  .password-form { padding: 14px 16px 18px; }
+  .password-identity { grid-template-columns: 1fr; }
+  .password-note { margin: 0 16px 16px; }
 }
 
 @media (max-width: 460px) {
@@ -1213,6 +1312,8 @@ a { color: inherit; }
   .state-timer { font-size: 11px; }
   .aux-picker { padding-left: 8px; }
   .aux-picker select { max-width: 112px; font-size: 9.5px; }
+  .password-topbar-actions { gap: 6px; }
+  .btn-back { min-height: 34px; padding: 0 8px; font-size: 8.5px; }
   .call-control span { font-size: 7.5px; }
   .history-scroll { overflow-x: auto; }
   .history-table { min-width: 430px; }
@@ -1421,6 +1522,22 @@ a { color: inherit; }
   }
   .login-version { color: #64748b; }
   .login-version span { color: #475569; }
+
+  .password-identity { background: #f8fafc; }
+  .password-identity-item b { color: #0f172a; }
+  .password-hint { color: #64748b; }
+  .form-success {
+    border-color: rgba(5, 150, 105, 0.28);
+    background: rgba(16, 185, 129, 0.1);
+    color: #047857;
+  }
+  .password-result {
+    border-color: rgba(8, 145, 178, 0.3);
+    background: rgba(8, 145, 178, 0.07);
+  }
+  .password-result-title { color: #0e7490; }
+  .credential-row code { color: #0f172a; }
+  .password-note { color: #64748b; }
 
   .topbar { background: rgba(244, 246, 251, 0.86); }
   .avatar {
